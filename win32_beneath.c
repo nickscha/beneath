@@ -776,7 +776,7 @@ BENEATH_API BENEATH_INLINE void win32_beneath_update_state(beneath_state *state,
     }
 }
 
-BENEATH_API BENEATH_INLINE void win32_beneath_process_input(void)
+BENEATH_API BENEATH_INLINE void win32_beneath_process_input(beneath_state *state)
 {
     MSG message;
 
@@ -784,12 +784,13 @@ BENEATH_API BENEATH_INLINE void win32_beneath_process_input(void)
     {
         switch (message.message)
         {
+        case WM_QUIT:
+            state->running = false;
+            break;
         default:
-        {
             TranslateMessage(&message);
             DispatchMessageA(&message);
-        }
-        break;
+            break;
         }
     }
 }
@@ -898,7 +899,7 @@ int mainCRTStartup(void)
         /******************************/
         /* Input Processing           */
         /******************************/
-        win32_beneath_process_input();
+        win32_beneath_process_input(state);
 
         /******************************/
         /* Rendering                  */
