@@ -156,7 +156,8 @@ typedef struct RAWKEYBOARD
 typedef struct RAWMOUSE
 {
     unsigned short usFlags;
-    unsigned long ulButtons;
+    unsigned short usButtonFlags;
+    unsigned short usButtonData;
     unsigned long ulRawButtons;
     long lLastX;
     long lLastY;
@@ -238,11 +239,21 @@ typedef struct tagCREATESTRUCTA
 #define ES_DISPLAY_REQUIRED ((unsigned long)0x00000002)
 #define ES_CONTINUOUS ((unsigned long)0x80000000)
 
+#define INFINITE 0xffffffff
+
 #define RIM_TYPEMOUSE 0
 #define RIM_TYPEKEYBOARD 1
 #define RIM_TYPEHID 2
 #define RIM_TYPEMAX 2
 #define RI_KEY_BREAK 1
+#define RI_MOUSE_WHEEL 0x0400
+#define RI_MOUSE_LEFT_BUTTON_DOWN 0x0001
+#define RI_MOUSE_LEFT_BUTTON_UP 0x0002
+#define RI_MOUSE_RIGHT_BUTTON_DOWN 0x0004
+#define RI_MOUSE_RIGHT_BUTTON_UP 0x0008
+#define RI_MOUSE_MIDDLE_BUTTON_DOWN 0x0010
+#define RI_MOUSE_MIDDLE_BUTTON_UP 0x0020
+#define WHEEL_DELTA 120
 #define RIDEV_INPUTSINK 0x00000100
 
 #define WM_ERASEBKGND 0x0014
@@ -438,11 +449,23 @@ typedef struct tagCREATESTRUCTA
 /* WIN32 Function prototyes */
 #ifndef _WINDOWS_
 
+WIN32_API(unsigned long)
+WaitForSingleObject(void *hHandle, unsigned long dwMilliseconds);
+
 WIN32_API(int)
 SetProcessDPIAware(void);
 
 WIN32_API(unsigned long)
 SetThreadExecutionState(unsigned long esFlags);
+
+WIN32_API(void *)
+CreateWaitableTimerA(void *lpSecutiryAttributes, int bManualReset, const char *lptimername);
+
+WIN32_API(int)
+SetWaitableTimer(void *hTimer, LARGE_INTEGER *lpDueTime, long lPeriod,
+                 void *pfnCompletionRoutine,
+                 void *lpArgToCompletionRoutine,
+                 int fResume);
 
 WIN32_API(void *)
 GetModuleHandleA(const char *lpModuleName);

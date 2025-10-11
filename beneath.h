@@ -120,13 +120,8 @@ typedef struct beneath_memory
  */
 typedef enum beneath_key
 {
-  /* Mouse buttons */
-  BENEATH_KEY_MOUSE_LEFT = 0,
-  BENEATH_KEY_MOUSE_RIGHT,
-  BENEATH_KEY_MOUSE_MIDDLE,
-
   /* Function keys */
-  BENEATH_KEY_F1,
+  BENEATH_KEY_F1 = 0,
   BENEATH_KEY_F2,
   BENEATH_KEY_F3,
   BENEATH_KEY_F4,
@@ -209,6 +204,7 @@ typedef struct beneath_controller_state
 
 typedef struct beneath_controller_input
 {
+  /* Keyboard Events */
   beneath_controller_state keys[BENEATH_KEY_COUNT];
 
   /* Mouse movement */
@@ -218,6 +214,9 @@ typedef struct beneath_controller_input
   float mouse_offset_y;
   int mouse_position_x;
   int mouse_position_y;
+  beneath_controller_state mouse_left;
+  beneath_controller_state mouse_right;
+  beneath_controller_state mouse_middle;
 
 } beneath_controller_input;
 

@@ -247,6 +247,17 @@ BENEATH_API BENEATH_INLINE void win32_beneath_enable_dpi_awareness(void)
     }
 }
 
+BENEATH_API BENEATH_INLINE void win32_precise_sleep(void **timer, double seconds)
+{
+    LARGE_INTEGER li;
+    long long val = -(long long)(seconds * 10000000.0); /* relative 100ns intervals */
+    li.LowPart = (unsigned long)(val & 0xFFFFFFFF);
+    li.HighPart = (long)((val >> 32) & 0xFFFFFFFF);
+
+    SetWaitableTimer(*timer, &li, 0, NULL, NULL, false);
+    WaitForSingleObject(*timer, INFINITE);
+}
+
 BENEATH_API BENEATH_INLINE beneath_key win32_beneath_input_map_virtual_key(unsigned short vKey)
 {
     switch (vKey)
@@ -379,14 +390,19 @@ BENEATH_API BENEATH_INLINE beneath_key win32_beneath_input_map_virtual_key(unsig
 
 BENEATH_API BENEATH_INLINE beneath_bool win32_beneath_input_register_raw_input(void *window_handle)
 {
-    RAWINPUTDEVICE rid[1] = {0};
+    RAWINPUTDEVICE rid[2] = {0};
 
     rid[0].usUsagePage = 0x01;
     rid[0].usUsage = 0x06;            /* Keyboard */
     rid[0].dwFlags = RIDEV_INPUTSINK; /* Receive input even when not focused */
     rid[0].hwndTarget = window_handle;
 
-    if (!RegisterRawInputDevices(rid, 1, sizeof(rid[0])))
+    rid[1].usUsagePage = 0x01;
+    rid[1].usUsage = 0x02; /* Mouse */
+    rid[1].dwFlags = RIDEV_INPUTSINK;
+    rid[1].hwndTarget = window_handle;
+
+    if (!RegisterRawInputDevices(rid, 2, sizeof(rid[0])))
     {
         win32_beneath_api_io_print(__FILE__, __LINE__, "Failed to register RAWINPUT device\n");
         return false;
@@ -441,6 +457,7 @@ BENEATH_API BENEATH_INLINE LONG_PTR WIN32_API_CALLBACK win32_beneath_window_call
                 unsigned short flags = raw->data.keyboard.Flags;
 
                 beneath_key bKey = win32_beneath_input_map_virtual_key(vKey);
+                
                 if (bKey != BENEATH_KEY_COUNT)
                 {
                     beneath_controller_state *keyState = &input->keys[bKey];
@@ -458,6 +475,83 @@ BENEATH_API BENEATH_INLINE LONG_PTR WIN32_API_CALLBACK win32_beneath_window_call
                             keyState->active = !keyState->active;
                         }
                     }
+                }
+            }
+            else if (raw->header.dwType == RIM_TYPEMOUSE)
+            {
+                RAWMOUSE *mouse = &raw->data.mouse;
+                POINT p;
+
+                input->mouse_attached = true;
+
+                /* Movement (raw, unaccelerated) */
+                input->mouse_offset_x += (float)mouse->lLastX;
+                input->mouse_offset_y += (float)mouse->lLastY;
+
+                /* Update absolute position for convenience (optional) */
+                if (GetCursorPos(&p))
+                {
+                    ScreenToClient((void *)window, &p);
+                    input->mouse_position_x = p.x;
+                    input->mouse_position_y = p.y;
+                }
+
+                /* Scroll wheel */
+                if (mouse->usButtonFlags & RI_MOUSE_WHEEL)
+                {
+                    short wheelDelta = (short)mouse->usButtonData;
+                    input->mouse_offset_scroll += (float)wheelDelta / (float)WHEEL_DELTA;
+                }
+
+                /* --- Left button --- */
+                if (mouse->usButtonFlags & RI_MOUSE_LEFT_BUTTON_DOWN)
+                {
+                    beneath_controller_state *b = &input->mouse_left;
+                    b->half_transition_count++;
+                    b->ended_down = 1;
+                    b->pressed = 1;
+                    b->active = !b->active;
+                }
+                else if (mouse->usButtonFlags & RI_MOUSE_LEFT_BUTTON_UP)
+                {
+                    beneath_controller_state *b = &input->mouse_left;
+                    b->half_transition_count++;
+                    b->ended_down = 0;
+                    b->pressed = 0;
+                }
+
+                /* --- Right button --- */
+                if (mouse->usButtonFlags & RI_MOUSE_RIGHT_BUTTON_DOWN)
+                {
+                    beneath_controller_state *b = &input->mouse_right;
+                    b->half_transition_count++;
+                    b->ended_down = 1;
+                    b->pressed = 1;
+                    b->active = !b->active;
+                }
+                else if (mouse->usButtonFlags & RI_MOUSE_RIGHT_BUTTON_UP)
+                {
+                    beneath_controller_state *b = &input->mouse_right;
+                    b->half_transition_count++;
+                    b->ended_down = 0;
+                    b->pressed = 0;
+                }
+
+                /* --- Middle button --- */
+                if (mouse->usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_DOWN)
+                {
+                    beneath_controller_state *b = &input->mouse_middle;
+                    b->half_transition_count++;
+                    b->ended_down = 1;
+                    b->pressed = 1;
+                    b->active = !b->active;
+                }
+                else if (mouse->usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_UP)
+                {
+                    beneath_controller_state *b = &input->mouse_middle;
+                    b->half_transition_count++;
+                    b->ended_down = 0;
+                    b->pressed = 0;
                 }
             }
         }
@@ -725,9 +819,7 @@ BENEATH_API BENEATH_INLINE void win32_beneath_update_state(beneath_state *state,
                 SetWindowPlacement(hwnd, &g_wpPrev);
 
                 /* restore placement */
-                SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
-                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
-                                 SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+                SetWindowPos(hwnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
 
                 GetClientRect(hwnd, &rect);
                 state->window_width = (unsigned int)(rect.right - rect.left);
@@ -738,9 +830,7 @@ BENEATH_API BENEATH_INLINE void win32_beneath_update_state(beneath_state *state,
                 /* resize windowed mode */
                 RECT rect = {0, 0, (long)state->window_width, (long)state->window_height};
                 AdjustWindowRect(&rect, (unsigned long)GetWindowLongA(hwnd, GWL_STYLE), false);
-                SetWindowPos(hwnd, NULL, 0, 0,
-                             rect.right - rect.left, rect.bottom - rect.top,
-                             SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+                SetWindowPos(hwnd, NULL, 0, 0, rect.right - rect.left, rect.bottom - rect.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
             }
             break;
         }
@@ -838,6 +928,7 @@ int mainCRTStartup(void)
     beneath_controller_input input = {0};
     win32_beneath_state win32_state = {0};
 
+    /* Make this process high priority and set timer resolution */
     SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);                        /* Set process to high priority */
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);                    /* Set thread to high priority */
     SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED); /* Prevent Windows sleep during running application */
@@ -878,6 +969,12 @@ int mainCRTStartup(void)
     /* Load window and initialize opengl 3.3 */
     void *window_handle = (void *)0;
     void *dc = (void *)0;
+    void *timer = CreateWaitableTimerA(NULL, true, NULL);
+
+    if (!timer)
+    {
+        return 1;
+    }
 
     if (!win32_beneath_initialize_opengl(&win32_state, &window_handle, &dc))
     {
@@ -950,24 +1047,12 @@ int mainCRTStartup(void)
         if (state->frames_per_second_target > 0)
         {
             double targetFrameTime = 1.0 / (double)state->frames_per_second_target;
-            double frameEndTime = win32_beneath_api_perf_time_nanoseconds() * 1e-9;
-            double frameTime = frameEndTime - now;
+            double frameTime = win32_beneath_api_perf_time_nanoseconds() * 1e-9 - now;
+            double remaining = targetFrameTime - frameTime;
 
-            if (frameTime < targetFrameTime)
+            if (remaining > 0.0)
             {
-                double remaining = targetFrameTime - frameTime;
-
-                /* sleep if > ~2ms */
-                if (remaining > 0.002)
-                {
-                    Sleep((unsigned long)(remaining * 1000.0));
-                }
-
-                /* Busy wait remainder for precision */
-                while ((win32_beneath_api_perf_time_nanoseconds() * 1e-9 - now) < targetFrameTime)
-                {
-                    /* spin */
-                }
+                win32_precise_sleep(&timer, remaining);
             }
         }
     }

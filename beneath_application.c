@@ -33,18 +33,9 @@ void beneath_update(
         state->changed_flags = BENEATH_STATE_CHANGED_FLAG_WINDOW;
     }
 
-    (void)input;
-
     if (state_app->test)
     {
         api->io_print(__FILE__, __LINE__, "Testflag was set\n");
-
-        /*
-        api->io_print(__FILE__, __LINE__, "Sleep 1 second\n");
-        api->time_sleep(1000);
-        api->io_print(__FILE__, __LINE__, "Awake now\n");
-        */
-
         state_app->test = 0;
     }
 
@@ -70,8 +61,4 @@ void beneath_update(
         state->changed_flags = BENEATH_STATE_CHANGED_FLAG_WINDOW;
         is_fullscreen = false;
     }
-
-    /*
-    state->running = false;
-    */
 }
