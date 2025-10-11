@@ -457,7 +457,7 @@ BENEATH_API BENEATH_INLINE LONG_PTR WIN32_API_CALLBACK win32_beneath_window_call
                 unsigned short flags = raw->data.keyboard.Flags;
 
                 beneath_key bKey = win32_beneath_input_map_virtual_key(vKey);
-                
+
                 if (bKey != BENEATH_KEY_COUNT)
                 {
                     beneath_controller_state *keyState = &input->keys[bKey];
@@ -952,7 +952,7 @@ int mainCRTStartup(void)
     state->window_clear_color_b = 0.157f;
     state->window_clear_color_a = 1.0f;
     state->running = true;
-    state->frames_per_second_target = BENEATH_STATE_FRAMES_PER_SECOND_VSYNC; /* VSYNC FPS */
+    state->frames_per_second_target = BENEATH_STATE_FRAMES_PER_SECOND_VSYNC;
 
     win32_state.state = state;
     win32_state.input = &input;
@@ -1050,9 +1050,15 @@ int mainCRTStartup(void)
             double frameTime = win32_beneath_api_perf_time_nanoseconds() * 1e-9 - now;
             double remaining = targetFrameTime - frameTime;
 
-            if (remaining > 0.0)
+            if (remaining <= 0.0)
+                break;
+
+            if (remaining > 0.002)
             {
-                win32_precise_sleep(&timer, remaining);
+                Sleep(1);
+            }
+            else
+            {
             }
         }
     }
