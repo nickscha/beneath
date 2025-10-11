@@ -894,7 +894,7 @@ BENEATH_API BENEATH_INLINE void win32_beneath_update_state(beneath_state *state,
     }
 }
 
-BENEATH_API BENEATH_INLINE void win32_beneath_process_input(beneath_state *state)
+BENEATH_API BENEATH_INLINE void win32_beneath_process_input(beneath_state *state, beneath_controller_input *input)
 {
     MSG message;
 
@@ -905,6 +905,51 @@ BENEATH_API BENEATH_INLINE void win32_beneath_process_input(beneath_state *state
         case WM_QUIT:
             state->running = false;
             break;
+        case WM_LBUTTONDOWN:
+        case WM_LBUTTONUP:
+        {
+            beneath_controller_state *b = &input->mouse_left;
+            beneath_bool isDown = (message.message == WM_LBUTTONDOWN);
+
+            if (b->ended_down != isDown)
+            {
+                b->half_transition_count++;
+                b->ended_down = isDown;
+                b->pressed = isDown ? 1 : 0;
+                b->active = !b->active;
+            }
+        }
+        break;
+        case WM_MBUTTONDOWN:
+        case WM_MBUTTONUP:
+        {
+            beneath_controller_state *b = &input->mouse_middle;
+            beneath_bool isDown = (message.message == WM_MBUTTONDOWN);
+
+            if (b->ended_down != isDown)
+            {
+                b->half_transition_count++;
+                b->ended_down = isDown;
+                b->pressed = isDown ? 1 : 0;
+                b->active = !b->active;
+            }
+        }
+        break;
+        case WM_RBUTTONDOWN:
+        case WM_RBUTTONUP:
+        {
+            beneath_controller_state *b = &input->mouse_right;
+            beneath_bool isDown = (message.message == WM_RBUTTONDOWN);
+
+            if (b->ended_down != isDown)
+            {
+                b->half_transition_count++;
+                b->ended_down = isDown;
+                b->pressed = isDown ? 1 : 0;
+                b->active = !b->active;
+            }
+        }
+        break;
         default:
             TranslateMessage(&message);
             DispatchMessageA(&message);
@@ -1026,7 +1071,7 @@ int mainCRTStartup(void)
         /******************************/
         /* Input Processing           */
         /******************************/
-        win32_beneath_process_input(state);
+        win32_beneath_process_input(state, &input);
 
         /******************************/
         /* Rendering                  */
