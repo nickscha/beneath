@@ -234,6 +234,10 @@ typedef struct tagCREATESTRUCTA
     unsigned long dwExStyle;
 } CREATESTRUCTA, *LPCREATESTRUCTA;
 
+#define ES_SYSTEM_REQUIRED ((unsigned long)0x00000001)
+#define ES_DISPLAY_REQUIRED ((unsigned long)0x00000002)
+#define ES_CONTINUOUS ((unsigned long)0x80000000)
+
 #define RIM_TYPEMOUSE 0
 #define RIM_TYPEKEYBOARD 1
 #define RIM_TYPEHID 2
@@ -433,6 +437,12 @@ typedef struct tagCREATESTRUCTA
 
 /* WIN32 Function prototyes */
 #ifndef _WINDOWS_
+
+WIN32_API(int)
+SetProcessDPIAware(void);
+
+WIN32_API(unsigned long)
+SetThreadExecutionState(unsigned long esFlags);
 
 WIN32_API(void *)
 GetModuleHandleA(const char *lpModuleName);

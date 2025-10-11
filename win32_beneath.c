@@ -222,6 +222,31 @@ BENEATH_API BENEATH_INLINE beneath_bool win32_beneath_load_application(void)
 }
 #endif
 
+BENEATH_API BENEATH_INLINE void win32_beneath_enable_dpi_awareness(void)
+{
+
+    void *shcore = LoadLibraryA("Shcore.dll");
+
+    if (shcore)
+    {
+        typedef long(__stdcall * SetProcessDpiAwarenessProc)(int);
+        SetProcessDpiAwarenessProc setDpiAwareness;
+
+        *(void **)(&setDpiAwareness) = GetProcAddress(shcore, "SetProcessDpiAwareness");
+
+        if (setDpiAwareness)
+        {
+            setDpiAwareness(2); /* PROCESS_PER_MONITOR_DPI_AWARE */
+        }
+
+        FreeLibrary(shcore);
+    }
+    else
+    {
+        SetProcessDPIAware();
+    }
+}
+
 BENEATH_API BENEATH_INLINE beneath_key win32_beneath_input_map_virtual_key(unsigned short vKey)
 {
     switch (vKey)
@@ -813,9 +838,11 @@ int mainCRTStartup(void)
     beneath_controller_input input = {0};
     win32_beneath_state win32_state = {0};
 
-    SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);     /* Set process to high priority */
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST); /* Set thread to high priority */
-    timeBeginPeriod(1);                                             /* Set timer resolution to 1 millisecond */
+    SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);                        /* Set process to high priority */
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);                    /* Set thread to high priority */
+    SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED); /* Prevent Windows sleep during running application */
+    win32_beneath_enable_dpi_awareness();                                              /* Make App DPI-Aware */
+    timeBeginPeriod(1);                                                                /* Set timer resolution to 1 millisecond */
 
     memory.memory_offset = sizeof(beneath_state);
     memory.memory = VirtualAlloc(0, memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -948,6 +975,7 @@ int mainCRTStartup(void)
     win32_beneath_api_io_print(__FILE__, __LINE__, "[win32] ended\n");
 
     timeEndPeriod(1);
+    SetThreadExecutionState(ES_CONTINUOUS);
 
     ExitProcess(0);
 
