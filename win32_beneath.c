@@ -760,6 +760,9 @@ BENEATH_API BENEATH_INLINE void win32_beneath_update_state(beneath_state *state,
         return;
     }
 
+    /****************************/
+    /* Window change handling   */
+    /****************************/
     if (state->changed_flags & BENEATH_STATE_CHANGED_FLAG_WINDOW)
     {
         void *hwnd = *window_handle;

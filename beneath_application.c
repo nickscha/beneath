@@ -3,10 +3,9 @@
 typedef struct app_state
 {
     unsigned int test;
+    beneath_bool is_fullscreen;
 
 } app_state;
-
-static beneath_bool is_fullscreen;
 
 void beneath_update(
     beneath_memory *memory,          /* The total block of memory handed to the application */
@@ -15,11 +14,11 @@ void beneath_update(
 )
 {
     beneath_state *state = (beneath_state *)memory->memory;
-    app_state *state_app = (app_state *)(((unsigned char *)memory->memory) + memory->memory_offset);
+    app_state *app = (app_state *)(((unsigned char *)memory->memory) + memory->memory_offset);
 
     if (!memory->memory_initialized)
     {
-        state_app->test = 1;
+        app->test = 1;
 
         memory->memory_initialized = true;
 
@@ -33,10 +32,10 @@ void beneath_update(
         state->changed_flags = BENEATH_STATE_CHANGED_FLAG_WINDOW;
     }
 
-    if (state_app->test)
+    if (app->test)
     {
         api->io_print(__FILE__, __LINE__, "Testflag was set\n");
-        state_app->test = 0;
+        app->test = 0;
     }
 
     api->time_sleep(1);
@@ -49,16 +48,16 @@ void beneath_update(
         state->running = false;
     }
 
-    if (input->keys[BENEATH_KEY_F6].active && !is_fullscreen)
+    if (input->keys[BENEATH_KEY_F6].active && !app->is_fullscreen)
     {
         state->window_mode = BENEATH_WINDOW_MODE_BORDERLESS;
         state->changed_flags = BENEATH_STATE_CHANGED_FLAG_WINDOW;
-        is_fullscreen = true;
+        app->is_fullscreen = true;
     }
-    else if (!input->keys[BENEATH_KEY_F6].active && is_fullscreen)
+    else if (!input->keys[BENEATH_KEY_F6].active && app->is_fullscreen)
     {
         state->window_mode = BENEATH_WINDOW_MODE_WINDOWED;
         state->changed_flags = BENEATH_STATE_CHANGED_FLAG_WINDOW;
-        is_fullscreen = false;
+        app->is_fullscreen = false;
     }
 }
