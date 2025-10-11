@@ -32,19 +32,84 @@ typedef struct beneath_mesh
 typedef struct beneath_draw_call
 {
     unsigned int id;
-    beneath_bool changed; /* Did the draw call change? If yes we may need to resend buffer data */
+    unsigned int data_capacity; /* How many instances can be added to the buffers */
 
+    beneath_bool changed; /* Did the draw call change? If yes we may need to resend buffer data */
     beneath_mesh *mesh;
 
     unsigned int models_count;          /* Number of models == Number of instances */
     unsigned int colors_count;          /* Per model color */
     unsigned int texture_indices_count; /* Per model texture_index. If a texture index is specified we ignore colors */
 
-    float *models;
-    float *colors;
-    int *texture_indices;
+    float *models;        /* Instance data model matrices (Matrix 4x4 = 16 floats) */
+    float *colors;        /* Instance data model colors (Vec3 = 3 floats) */
+    int *texture_indices; /* Instance data texture indices (1 int) */
 
 } beneath_draw_call;
+
+static beneath_bool beneath_draw_call_append(
+    beneath_draw_call *draw_call,
+    float model[16],
+    float color[3],
+    int texture_index)
+{
+    if (!draw_call || draw_call->data_capacity < 1 || (!model && !color && texture_index < 0))
+    {
+        return false;
+    }
+
+    if (model)
+    {
+        int i;
+        int base_index = draw_call->models_count * 16;
+
+        /* Not enough memory allocated to store the data */
+        if (draw_call->models_count + 1 > draw_call->data_capacity)
+        {
+            return false;
+        }
+
+        for (i = 0; i < 16; ++i)
+        {
+            draw_call->models[base_index + i] = model[i];
+        }
+
+        draw_call->models_count++;
+    }
+
+    if (color)
+    {
+        int i;
+        int base_index = draw_call->colors_count * 3;
+
+        /* Not enough memory allocated to store the data */
+        if (draw_call->colors_count + 1 > draw_call->data_capacity)
+        {
+            return false;
+        }
+
+        for (i = 0; i < 3; ++i)
+        {
+            draw_call->colors[base_index + i] = color[i];
+        }
+
+        draw_call->colors_count++;
+    }
+
+    if (texture_index >= 0)
+    {
+        /* Not enough memory allocated to store the data */
+        if (draw_call->texture_indices_count + 1 > draw_call->data_capacity)
+        {
+            return false;
+        }
+
+        draw_call->texture_indices[draw_call->texture_indices_count] = texture_index;
+        draw_call->texture_indices_count++;
+    }
+
+    return true;
+}
 
 static unsigned int beneath_hash_draw_call(beneath_draw_call *dc)
 {
@@ -52,11 +117,6 @@ static unsigned int beneath_hash_draw_call(beneath_draw_call *dc)
     unsigned int prime = 16777619u;  /* FNV-1a prime */
 
     /* Draw call fields */
-    hash ^= dc->id;
-    hash *= prime;
-    hash ^= (unsigned int)dc->changed;
-    hash *= prime;
-
     /* Models: 0 = none, 1 = uniform, >1 = layout */
     hash ^= (dc->models_count == 0 ? 0 : (dc->models_count == 1 ? 1 : 2));
     hash *= prime;
@@ -72,13 +132,6 @@ static unsigned int beneath_hash_draw_call(beneath_draw_call *dc)
     if (dc->mesh)
     {
         beneath_mesh *m = dc->mesh;
-
-        hash ^= m->id;
-        hash *= prime;
-        hash ^= (unsigned int)m->changed;
-        hash *= prime;
-        hash ^= (unsigned int)m->dynamic;
-        hash *= prime;
 
         /* Mesh attributes: 0 = unused, >0 = used as layout */
         hash ^= (m->vertices_count > 0 ? 1 : 0);
