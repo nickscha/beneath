@@ -952,7 +952,7 @@ int mainCRTStartup(void)
     state->window_clear_color_b = 0.157f;
     state->window_clear_color_a = 1.0f;
     state->running = true;
-    state->frames_per_second_target = BENEATH_STATE_FRAMES_PER_SECOND_VSYNC;
+    state->frames_per_second_target = 30;
 
     win32_state.state = state;
     win32_state.input = &input;
@@ -1047,19 +1047,7 @@ int mainCRTStartup(void)
         if (state->frames_per_second_target > 0)
         {
             double targetFrameTime = 1.0 / (double)state->frames_per_second_target;
-            double frameTime = win32_beneath_api_perf_time_nanoseconds() * 1e-9 - now;
-            double remaining = targetFrameTime - frameTime;
-
-            if (remaining <= 0.0)
-                break;
-
-            if (remaining > 0.002)
-            {
-                Sleep(1);
-            }
-            else
-            {
-            }
+            win32_precise_sleep(&timer, targetFrameTime);
         }
     }
 
