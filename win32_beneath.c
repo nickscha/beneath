@@ -952,7 +952,7 @@ int mainCRTStartup(void)
     state->window_clear_color_b = 0.157f;
     state->window_clear_color_a = 1.0f;
     state->running = true;
-    state->frames_per_second_target = 30;
+    state->frames_per_second_target = BENEATH_STATE_FRAMES_PER_SECOND_VSYNC;
 
     win32_state.state = state;
     win32_state.input = &input;
