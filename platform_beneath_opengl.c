@@ -4,55 +4,6 @@
 #include "beneath.h"
 #include "sb.h"
 
-
-
-static unsigned int beneath_hash_draw_call(beneath_draw_call *dc)
-{
-    unsigned int hash = 2166136261u; /* FNV-1a offset basis */
-    unsigned int prime = 16777619u;  /* FNV-1a prime */
-
-    /* Draw call fields */
-    /* Models: 0 = none, 1 = uniform, >1 = layout */
-    hash ^= (dc->models_count == 0 ? 0 : (dc->models_count == 1 ? 1 : 2));
-    hash *= prime;
-
-    /* Colors: 0 = none, 1 = uniform, >1 = layout */
-    hash ^= (dc->colors_count == 0 ? 0 : (dc->colors_count == 1 ? 1 : 2));
-    hash *= prime;
-
-    /* Texture indices: 0 = none, 1 = uniform, >1 = layout */
-    hash ^= (dc->texture_indices_count == 0 ? 0 : (dc->texture_indices_count == 1 ? 1 : 2));
-    hash *= prime;
-
-    if (dc->mesh)
-    {
-        beneath_mesh *m = dc->mesh;
-
-        /* Mesh attributes: 0 = unused, >0 = used as layout */
-        hash ^= (m->vertices_count > 0 ? 1 : 0);
-        hash *= prime;
-        hash ^= (m->uvs_count > 0 ? 1 : 0);
-        hash *= prime;
-        hash ^= (m->normals_count > 0 ? 1 : 0);
-        hash *= prime;
-        hash ^= (m->tangents_count > 0 ? 1 : 0);
-        hash *= prime;
-        hash ^= (m->bitangents_count > 0 ? 1 : 0);
-        hash *= prime;
-
-        /* Vertex colors: only used if draw_call colors_count and texture_indices_count are zero */
-        beneath_bool use_mesh_color = (m->colors_count > 0 && dc->colors_count == 0 && dc->texture_indices_count == 0);
-        hash ^= (use_mesh_color ? 1 : 0);
-        hash *= prime;
-
-        /* Indices count probably doesn't affect shader layout, but we can include it for safety */
-        hash ^= (m->indices_count > 0 ? 1 : 0);
-        hash *= prime;
-    }
-
-    return hash;
-}
-
 static void platform_beneath_draw(
     beneath_draw_call *draw_call,
     float projection_view[16])
@@ -109,18 +60,38 @@ static char *beneath_shader_layout_names[14] = {
     "texture_index" /* Instance Texture Index*/
 };
 
+typedef enum beneath_shader_uniform_locations_default
+{
+    BENEATH_SHADER_UNIFORM_LOCATION_DEFAULT_TIME = 0,
+    BENEATH_SHADER_UNIFORM_LOCATION_DEFAULT_DELTA_TIME,
+    BENEATH_SHADER_UNIFORM_LOCATION_DEFAULT_RESOLUTION,
+    BENEATH_SHADER_UNIFORM_LOCATION_DEFAULT_CAMERA_POSITION,
+    BENEATH_SHADER_UNIFORM_LOCATION_DEFAULT_PROJECTION_VIEW,
+    BENEATH_SHADER_UNIFORM_LOCATION_DEFAULT_COUNT
+
+} beneath_shader_uniform_locations_default;
+
+static char *beneath_shader_uniform_default_names[5] = {
+    "time",
+    "delta_time",
+    "resolution",
+    "camera_position",
+    "pv"
+};
+
 typedef struct beneath_shader
 {
     unsigned int hash;
-    char *vertex_code;
-    char *fragment_code;
+    char *code_vertex;
+    char *code_fragment;
+    int uniform_locations_default[BENEATH_SHADER_UNIFORM_LOCATION_DEFAULT_COUNT];
 
 } beneath_shader;
 
 static void compile_shader(beneath_draw_call *draw_call)
 {
     beneath_bool use_mesh_color = draw_call->mesh->colors_count > 0 && draw_call->colors_count == 0 && draw_call->texture_indices_count == 0;
-    unsigned int hash = beneath_hash_draw_call(draw_call);
+    unsigned int hash = beneath_draw_call_hash(draw_call);
     int layout_location_current;
 
     char shader_code_buffer[2048];

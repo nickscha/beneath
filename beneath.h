@@ -225,6 +225,54 @@ BENEATH_API BENEATH_INLINE beneath_bool beneath_draw_call_append(
   return true;
 }
 
+BENEATH_API BENEATH_INLINE unsigned int beneath_draw_call_hash(beneath_draw_call *dc)
+{
+  unsigned int hash = 2166136261u; /* FNV-1a offset basis */
+  unsigned int prime = 16777619u;  /* FNV-1a prime */
+
+  /* Draw call fields */
+  /* Models: 0 = none, 1 = uniform, >1 = layout */
+  hash ^= (dc->models_count == 0 ? 0 : (dc->models_count == 1 ? 1 : 2));
+  hash *= prime;
+
+  /* Colors: 0 = none, 1 = uniform, >1 = layout */
+  hash ^= (dc->colors_count == 0 ? 0 : (dc->colors_count == 1 ? 1 : 2));
+  hash *= prime;
+
+  /* Texture indices: 0 = none, 1 = uniform, >1 = layout */
+  hash ^= (dc->texture_indices_count == 0 ? 0 : (dc->texture_indices_count == 1 ? 1 : 2));
+  hash *= prime;
+
+  if (dc->mesh)
+  {
+    beneath_mesh *m = dc->mesh;
+    beneath_bool use_mesh_color;
+
+    /* Mesh attributes: 0 = unused, >0 = used as layout */
+    hash ^= (m->vertices_count > 0 ? 1 : 0);
+    hash *= prime;
+    hash ^= (m->uvs_count > 0 ? 1 : 0);
+    hash *= prime;
+    hash ^= (m->normals_count > 0 ? 1 : 0);
+    hash *= prime;
+    hash ^= (m->tangents_count > 0 ? 1 : 0);
+    hash *= prime;
+    hash ^= (m->bitangents_count > 0 ? 1 : 0);
+    hash *= prime;
+
+    /* Vertex colors: only used if draw_call colors_count and texture_indices_count are zero */
+    use_mesh_color = (m->colors_count > 0 && dc->colors_count == 0 && dc->texture_indices_count == 0);
+    hash ^= (use_mesh_color ? 1 : 0);
+    hash *= prime;
+
+    /* Indices count probably doesn't affect shader layout, but we can include it for safety */
+    hash ^= (m->indices_count > 0 ? 1 : 0);
+    hash *= prime;
+  }
+
+  return hash;
+}
+
 /* #############################################################################
  * # Beneath Platform Controller state
  * #############################################################################
@@ -332,62 +380,6 @@ typedef struct beneath_controller_input
 } beneath_controller_input;
 
 /* #############################################################################
- * # Beneath Platform provided api calls
- * #############################################################################
- */
-typedef void (*beneath_api_io_print)(
-    char *filename, /* The current compilation unit filename (usualy __FILE__)*/
-    int line,       /* The current compilation unit line number (usually __LINE__)*/
-    char *string    /* The string to print to the console */
-);
-
-typedef beneath_bool (*beneath_api_io_file_size)(
-    char *filename,         /* The filename/path of which to return the file size */
-    unsigned int *file_size /* The gathered file size in bytes */
-);
-
-typedef beneath_bool (*beneath_api_io_file_read)(
-    char *filename,                    /* The filename/path to read into the file_buffer */
-    unsigned char *file_buffer,        /* The user provided file_buffer large enough to hold the file contents */
-    unsigned int file_buffer_capacity, /* The capacity/max site of the file_buffer */
-    unsigned int *file_buffer_size     /* The total number of bytes read by this function */
-);
-
-typedef beneath_bool (*beneath_api_io_file_write)(
-    char *filename,          /* The filename/path to write the file_buffer to */
-    unsigned char *buffer,   /* The file content to be written */
-    unsigned int buffer_size /* The size of the file content buffer */
-);
-
-/* Platform Performance Metrics */
-typedef unsigned int (*beneath_api_perf_cycle_count)(void);
-typedef double (*beneath_api_perf_time_nanoseconds)(void);
-
-/* Platform Graphics */
-typedef beneath_bool (*beneath_api_graphics_draw)(
-    beneath_draw_call *draw_call, /* The draw call instanced objects */
-    float projection_view[16]     /* The projection view matrix */
-);
-
-typedef struct beneath_api
-{
-  /* Platform IO */
-  beneath_api_io_print io_print;           /* Prints the specified string to console */
-  beneath_api_io_file_size io_file_size;   /* Returns the file size */
-  beneath_api_io_file_read io_file_read;   /* Reads the specified file into the buffer */
-  beneath_api_io_file_write io_file_write; /* Writes the specified buffer to a file */
-
-  /* Platform Performance Metrics */
-  beneath_api_perf_cycle_count perf_cycle_count;           /* The current cpu cycle count  */
-  beneath_api_perf_time_nanoseconds perf_time_nanoseconds; /* The curent nanoseconds epoch */
-
-  /* Platform Graphics */
-  beneath_api_graphics_draw graphics_draw;
-  /* graphics_toggle_wireframe  */
-
-} beneath_api;
-
-/* #############################################################################
  * # Beneath Platform State
  * #############################################################################
  *
@@ -435,6 +427,63 @@ typedef struct beneath_state
   double delta_time;
 
 } beneath_state;
+
+/* #############################################################################
+ * # Beneath Platform provided api calls
+ * #############################################################################
+ */
+typedef void (*beneath_api_io_print)(
+    char *filename, /* The current compilation unit filename (usualy __FILE__)*/
+    int line,       /* The current compilation unit line number (usually __LINE__)*/
+    char *string    /* The string to print to the console */
+);
+
+typedef beneath_bool (*beneath_api_io_file_size)(
+    char *filename,         /* The filename/path of which to return the file size */
+    unsigned int *file_size /* The gathered file size in bytes */
+);
+
+typedef beneath_bool (*beneath_api_io_file_read)(
+    char *filename,                    /* The filename/path to read into the file_buffer */
+    unsigned char *file_buffer,        /* The user provided file_buffer large enough to hold the file contents */
+    unsigned int file_buffer_capacity, /* The capacity/max site of the file_buffer */
+    unsigned int *file_buffer_size     /* The total number of bytes read by this function */
+);
+
+typedef beneath_bool (*beneath_api_io_file_write)(
+    char *filename,          /* The filename/path to write the file_buffer to */
+    unsigned char *buffer,   /* The file content to be written */
+    unsigned int buffer_size /* The size of the file content buffer */
+);
+
+/* Platform Performance Metrics */
+typedef unsigned int (*beneath_api_perf_cycle_count)(void);
+typedef double (*beneath_api_perf_time_nanoseconds)(void);
+
+/* Platform Graphics */
+typedef beneath_bool (*beneath_api_graphics_draw)(
+    beneath_state *state,         /* The state */
+    beneath_draw_call *draw_call, /* The draw call instanced objects */
+    float projection_view[16]     /* The projection view matrix */
+);
+
+typedef struct beneath_api
+{
+  /* Platform IO */
+  beneath_api_io_print io_print;           /* Prints the specified string to console */
+  beneath_api_io_file_size io_file_size;   /* Returns the file size */
+  beneath_api_io_file_read io_file_read;   /* Reads the specified file into the buffer */
+  beneath_api_io_file_write io_file_write; /* Writes the specified buffer to a file */
+
+  /* Platform Performance Metrics */
+  beneath_api_perf_cycle_count perf_cycle_count;           /* The current cpu cycle count  */
+  beneath_api_perf_time_nanoseconds perf_time_nanoseconds; /* The curent nanoseconds epoch */
+
+  /* Platform Graphics */
+  beneath_api_graphics_draw graphics_draw;
+  /* graphics_toggle_wireframe  */
+
+} beneath_api;
 
 /* #############################################################################
  * # Beneath Application entry/update point

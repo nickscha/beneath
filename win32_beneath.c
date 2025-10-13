@@ -959,12 +959,28 @@ BENEATH_API BENEATH_INLINE void win32_beneath_process_input(beneath_state *state
 }
 
 beneath_bool win32_beneath_api_graphics_draw(
+    beneath_state *state,         /* The state */
     beneath_draw_call *draw_call, /* The draw call instanced objects */
     float projection_view[16]     /* The projection view matrix */
 )
 {
     (void)draw_call;
     (void)projection_view;
+    (void)state;
+
+    if (!draw_call || draw_call->models_count == 0 || !draw_call->mesh)
+    {
+        return false;
+    }
+
+    if (draw_call->changed || draw_call->mesh->changed)
+    {
+        unsigned int hash = beneath_draw_call_hash(draw_call);
+        (void)hash;
+    }
+
+    draw_call->changed = false;
+    draw_call->mesh->changed = false;
 
     return true;
 }
