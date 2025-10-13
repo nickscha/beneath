@@ -38,8 +38,6 @@ void beneath_update(
         app->test = 0;
     }
 
-    api->time_sleep(1);
-
     (void)state;
 
     if (input->keys[BENEATH_KEY_RETURN].ended_down)

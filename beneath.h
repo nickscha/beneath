@@ -115,6 +115,117 @@ typedef struct beneath_memory
 } beneath_memory;
 
 /* #############################################################################
+ * # Beneath Rendering
+ * #############################################################################
+ */
+typedef struct beneath_mesh
+{
+  unsigned int id;
+  beneath_bool changed; /* If the mesh has changed we may need to initialize it again in the platform layer */
+  beneath_bool dynamic;
+
+  unsigned int vertices_count;
+  unsigned int uvs_count;
+  unsigned int normals_count;
+  unsigned int tangents_count;
+  unsigned int bitangents_count;
+  unsigned int colors_count;
+  unsigned int indices_count;
+
+  float *vertices;
+  float *uvs;
+  float *normals;
+  float *tangents;
+  float *bitangents;
+  float *colors;
+  int *indices;
+
+} beneath_mesh;
+
+/* SoA style draw call */
+typedef struct beneath_draw_call
+{
+  unsigned int id;
+  unsigned int data_capacity; /* How many instances can be added to the buffers */
+  beneath_bool changed;       /* Did the draw call change? If yes we may need to resend buffer data */
+
+  beneath_mesh *mesh; /* The mesh data */
+
+  unsigned int models_count;          /* Number of models == Number of instances */
+  unsigned int colors_count;          /* Per model color */
+  unsigned int texture_indices_count; /* Per model texture_index. If a texture index is specified we ignore colors */
+
+  float *models;        /* Instance data model matrices (Matrix 4x4 = 16 floats) */
+  float *colors;        /* Instance data model colors (Vec3 = 3 floats) */
+  int *texture_indices; /* Instance data texture indices (1 int) */
+
+} beneath_draw_call;
+
+BENEATH_API BENEATH_INLINE beneath_bool beneath_draw_call_append(
+    beneath_draw_call *draw_call,
+    float model[16],
+    float color[3],
+    int texture_index)
+{
+  if (!draw_call || draw_call->data_capacity < 1 || (!model && !color && texture_index < 0))
+  {
+    return false;
+  }
+
+  if (model)
+  {
+    unsigned int i;
+    unsigned int base_index = draw_call->models_count * 16;
+
+    /* Not enough memory allocated to store the data */
+    if (draw_call->models_count + 1 > draw_call->data_capacity)
+    {
+      return false;
+    }
+
+    for (i = 0; i < 16; ++i)
+    {
+      draw_call->models[base_index + i] = model[i];
+    }
+
+    draw_call->models_count++;
+  }
+
+  if (color)
+  {
+    unsigned int i;
+    unsigned int base_index = draw_call->colors_count * 3;
+
+    /* Not enough memory allocated to store the data */
+    if (draw_call->colors_count + 1 > draw_call->data_capacity)
+    {
+      return false;
+    }
+
+    for (i = 0; i < 3; ++i)
+    {
+      draw_call->colors[base_index + i] = color[i];
+    }
+
+    draw_call->colors_count++;
+  }
+
+  if (texture_index >= 0)
+  {
+    /* Not enough memory allocated to store the data */
+    if (draw_call->texture_indices_count + 1 > draw_call->data_capacity)
+    {
+      return false;
+    }
+
+    draw_call->texture_indices[draw_call->texture_indices_count] = texture_index;
+    draw_call->texture_indices_count++;
+  }
+
+  return true;
+}
+
+/* #############################################################################
  * # Beneath Platform Controller state
  * #############################################################################
  */
@@ -248,12 +359,15 @@ typedef beneath_bool (*beneath_api_io_file_write)(
     unsigned int buffer_size /* The size of the file content buffer */
 );
 
-typedef beneath_bool (*beneath_api_time_sleep)(
-    unsigned int milliseconds /* The number of milliseconds to sleep */
-);
-
+/* Platform Performance Metrics */
 typedef unsigned int (*beneath_api_perf_cycle_count)(void);
 typedef double (*beneath_api_perf_time_nanoseconds)(void);
+
+/* Platform Graphics */
+typedef beneath_bool (*beneath_api_graphics_draw)(
+    beneath_draw_call *draw_call, /* The draw call instanced objects */
+    float projection_view[16]     /* The projection view matrix */
+);
 
 typedef struct beneath_api
 {
@@ -263,16 +377,13 @@ typedef struct beneath_api
   beneath_api_io_file_read io_file_read;   /* Reads the specified file into the buffer */
   beneath_api_io_file_write io_file_write; /* Writes the specified buffer to a file */
 
-  /* Time */
-  beneath_api_time_sleep time_sleep; /* Sleeps for the specified amound of milliseconds */
-
   /* Platform Performance Metrics */
   beneath_api_perf_cycle_count perf_cycle_count;           /* The current cpu cycle count  */
   beneath_api_perf_time_nanoseconds perf_time_nanoseconds; /* The curent nanoseconds epoch */
 
   /* Platform Graphics */
+  beneath_api_graphics_draw graphics_draw;
   /* graphics_toggle_wireframe  */
-  /* graphics_draw              */
 
 } beneath_api;
 

@@ -958,6 +958,17 @@ BENEATH_API BENEATH_INLINE void win32_beneath_process_input(beneath_state *state
     }
 }
 
+beneath_bool win32_beneath_api_graphics_draw(
+    beneath_draw_call *draw_call, /* The draw call instanced objects */
+    float projection_view[16]     /* The projection view matrix */
+)
+{
+    (void)draw_call;
+    (void)projection_view;
+
+    return true;
+}
+
 #ifdef __clang__
 #elif __GNUC__
 __attribute((externally_visible))
@@ -1010,9 +1021,9 @@ int mainCRTStartup(void)
     api.io_file_size = win32_beneath_api_io_file_size;
     api.io_file_read = win32_beneath_api_io_file_read;
     api.io_file_write = win32_beneath_api_io_file_write;
-    api.time_sleep = win32_beneath_api_time_sleep;
     api.perf_cycle_count = win32_beneath_api_perf_cycle_count;
     api.perf_time_nanoseconds = win32_beneath_api_perf_time_nanoseconds;
+    api.graphics_draw = win32_beneath_api_graphics_draw;
 
     /* Load window and initialize opengl 3.3 */
     void *window_handle = (void *)0;
