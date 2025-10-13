@@ -25,7 +25,7 @@ void beneath_update(
         api->io_print(__FILE__, __LINE__, "Hello from application :)\n");
 
         /* Test changing the state */
-        beneath_strcpy(state->window_title, "Application XY", sizeof(state->window_title));
+        beneath_strcpy(state->window_title, "Beneath Testapplication", sizeof(state->window_title));
         state->window_clear_color_r = 0.5f;
         state->window_width = 600;
         state->window_height = 400;

@@ -413,7 +413,7 @@ typedef struct beneath_state
   beneath_window_mode window_mode;
   beneath_bool window_clip_cursor;
 
-  char window_title[64];
+  char window_title[128];
   unsigned int window_width;
   unsigned int window_height;
   float window_clear_color_r;

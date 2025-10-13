@@ -958,7 +958,7 @@ BENEATH_API BENEATH_INLINE void win32_beneath_process_input(beneath_state *state
     }
 }
 
-beneath_bool win32_beneath_api_graphics_draw(
+BENEATH_API beneath_bool win32_beneath_api_graphics_draw(
     beneath_state *state,         /* The state */
     beneath_draw_call *draw_call, /* The draw call instanced objects */
     float projection_view[16]     /* The projection view matrix */
