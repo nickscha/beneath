@@ -594,26 +594,53 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 1]);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, (int)mesh->indices_count * (int)sizeof(unsigned int), mesh->indices, GL_STATIC_DRAW);
 
+        /* UV data */
+        if (mesh->uvs_count > 0)
+        {
+            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 2]);
+            glBufferData(GL_ARRAY_BUFFER, (int)mesh->uvs_count * (int)sizeof(float), mesh->uvs, GL_STATIC_DRAW);
+            glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_UV, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
+            glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_UV);
+        }
+
         /* Normals data */
         if (mesh->normals_count > 0)
         {
-            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 2]);
+            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 3]);
             glBufferData(GL_ARRAY_BUFFER, (int)mesh->normals_count * (int)sizeof(float), mesh->normals, GL_STATIC_DRAW);
             glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_NORMAL, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
             glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_NORMAL);
         }
 
+        /* Tangent data */
+        if (mesh->tangents_count > 0)
+        {
+            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 4]);
+            glBufferData(GL_ARRAY_BUFFER, (int)mesh->tangents_count * (int)sizeof(float), mesh->tangents, GL_STATIC_DRAW);
+            glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_TANGENT, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+            glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_TANGENT);
+        }
+
+        /* Bitangent data */
+        if (mesh->bitangents_count > 0)
+        {
+            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 5]);
+            glBufferData(GL_ARRAY_BUFFER, (int)mesh->bitangents_count * (int)sizeof(float), mesh->bitangents, GL_STATIC_DRAW);
+            glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_BITANGENT, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+            glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_BITANGENT);
+        }
+
         /* Color data */
         if (mesh->colors_count > 0)
         {
-            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 3]);
+            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 6]);
             glBufferData(GL_ARRAY_BUFFER, (int)mesh->colors_count * (int)sizeof(float), mesh->colors, GL_STATIC_DRAW);
             glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_COLOR, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
             glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_COLOR);
         }
 
         /* Instanced model */
-        glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 4]);
+        glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 7]);
         glBufferData(GL_ARRAY_BUFFER, (int)draw_call->models_count * sizeM4x4, &draw_call->models[0], GL_STATIC_DRAW);
 
         /* set attribute pointers 6 - 9 for model matrix (4 times vec4) */
