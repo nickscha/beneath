@@ -594,6 +594,15 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 1]);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, (int)mesh->indices_count * (int)sizeof(unsigned int), mesh->indices, GL_STATIC_DRAW);
 
+        /* Normals data */
+        if (mesh->normals_count > 0)
+        {
+            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 2]);
+            glBufferData(GL_ARRAY_BUFFER, (int)mesh->normals_count * (int)sizeof(float), mesh->normals, GL_STATIC_DRAW);
+            glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_NORMAL, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+            glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_NORMAL);
+        }
+
         /* Color data */
         if (mesh->colors_count > 0)
         {
@@ -604,7 +613,7 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         }
 
         /* Instanced model */
-        glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 2]);
+        glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 4]);
         glBufferData(GL_ARRAY_BUFFER, (int)draw_call->models_count * sizeM4x4, &draw_call->models[0], GL_STATIC_DRAW);
 
         /* set attribute pointers 6 - 9 for model matrix (4 times vec4) */

@@ -39,6 +39,18 @@ static unsigned int cube_indices[] = {
     3, 7, 6,
     6, 2, 3};
 
+/* Per-vertex normals */
+static float cube_normals[] = {
+    /* 0: Bottom-left back  */ -0.577f, -0.577f, -0.577f,
+    /* 1: Bottom-right back */ 0.577f, -0.577f, -0.577f,
+    /* 2: Top-right back    */ 0.577f, 0.577f, -0.577f,
+    /* 3: Top-left back     */ -0.577f, 0.577f, -0.577f,
+
+    /* 4: Bottom-left front */ -0.577f, -0.577f, 0.577f,
+    /* 5: Bottom-right front*/ 0.577f, -0.577f, 0.577f,
+    /* 6: Top-right front   */ 0.577f, 0.577f, 0.577f,
+    /* 7: Top-left front    */ -0.577f, 0.577f, 0.577f};
+
 /* Per-vertex color (R, G, B) - normalized to 0..1 range like a normal map */
 static float cube_colors[] = {
     0.25f, 0.25f, 0.25f,
@@ -106,8 +118,10 @@ void beneath_update(
         mesh.dynamic = true;
         mesh.vertices_count = BENEATH_ARRAY_SIZE(cube_vertices);
         mesh.indices_count = BENEATH_ARRAY_SIZE(cube_indices);
+        mesh.normals_count = BENEATH_ARRAY_SIZE(cube_normals);
         mesh.colors_count = BENEATH_ARRAY_SIZE(cube_colors);
         mesh.vertices = cube_vertices;
+        mesh.normals = cube_normals;
         mesh.indices = cube_indices;
         mesh.colors = cube_colors;
 
