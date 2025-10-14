@@ -655,9 +655,12 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         glBindVertexArray(0);
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, ctx.fbo);
-    glViewport(0, 0, ctx.fbo_width, ctx.fbo_height);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if (draw_call->pixelize)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, ctx.fbo);
+        glViewport(0, 0, ctx.fbo_width, ctx.fbo_height);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
     {
 
         /*
@@ -688,17 +691,20 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         glBindVertexArray(0);
     }
 
-    /* --- Post-process pixelated upscale --- */
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glViewport(0, 0, (int)state->window_width, (int)state->window_height);
-    glClear(GL_COLOR_BUFFER_BIT);
+    if (draw_call->pixelize)
+    {
+        /* --- Post-process pixelated upscale --- */
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, (int)state->window_width, (int)state->window_height);
+        glClear(GL_COLOR_BUFFER_BIT);
 
-    glUseProgram(ctx.blit_program);
-    glBindVertexArray(ctx.fbo_vao);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, ctx.fbo_color);
-    glUniform1i(ctx.blit_tex_uniform, 0);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glUseProgram(ctx.blit_program);
+        glBindVertexArray(ctx.fbo_vao);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, ctx.fbo_color);
+        glUniform1i(ctx.blit_tex_uniform, 0);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    }
 
     draw_call->changed = false;
     draw_call->mesh->changed = false;

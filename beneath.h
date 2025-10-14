@@ -162,6 +162,8 @@ typedef struct beneath_draw_call
   float *colors;        /* Instance data model colors (Vec3 = 3 floats) */
   int *texture_indices; /* Instance data texture indices (1 int) */
 
+  beneath_bool pixelize; /* Temporary */
+
 } beneath_draw_call;
 
 BENEATH_API BENEATH_INLINE beneath_bool beneath_draw_call_append(

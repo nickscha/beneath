@@ -131,6 +131,7 @@ void beneath_update(
         draw_call.mesh = &mesh;
         draw_call.models = model.e;
         draw_call.models_count = 1;
+        draw_call.pixelize = true;
 
         /*
         draw_call.colors = color;
