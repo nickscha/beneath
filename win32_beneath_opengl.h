@@ -67,7 +67,7 @@ static char *beneath_opengl_shader_uniform_names[8] = {
 typedef struct beneath_opengl_shader
 {
     unsigned int program_id;
-    unsigned int draw_call_hash;
+    unsigned int hash;
     char code_vertex[2048];
     char code_fragment[2048];
     int uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_COUNT];
@@ -90,6 +90,17 @@ typedef struct beneath_opengl_context
     unsigned int shaders_size;
     unsigned int shaders_previous_index;
     unsigned int shaders_active_index;
+
+    /* Pixelation FBO */
+    unsigned int fbo;
+    unsigned int fbo_color;
+    unsigned int fbo_depth;
+    unsigned int fbo_vao;
+    unsigned int fbo_vbo;
+    unsigned int blit_program;
+    int blit_tex_uniform;
+    int fbo_width;
+    int fbo_height;
 
 } beneath_opengl_context;
 
@@ -275,7 +286,7 @@ BENEATH_API beneath_bool beneath_opengl_shader_load(
 
         for (i = 0; i < ctx->shaders_size; ++i)
         {
-            if (ctx->shaders[i].draw_call_hash == draw_call_hash)
+            if (ctx->shaders[i].hash == draw_call_hash)
             {
                 ctx->shaders_active_index = i;
                 return true;
@@ -285,7 +296,7 @@ BENEATH_API beneath_bool beneath_opengl_shader_load(
 
     beneath_opengl_shader shader = {0};
     /* shader.program_id = -1; */
-    shader.draw_call_hash = draw_call_hash;
+    shader.hash = draw_call_hash;
 
     /* Generate shader code */
     if (!beneath_opengl_shader_generate(
@@ -346,6 +357,92 @@ BENEATH_API beneath_bool beneath_opengl_shader_load(
 }
 
 /******************************/
+/* Pixelation Functions       */
+/******************************/
+BENEATH_API beneath_bool beneath_opengl_framebuffer_initialize(beneath_opengl_context *ctx, beneath_api_io_print print, int fbo_width, int fbo_height)
+{
+    /* --- Pixelation setup --- */
+    ctx->fbo_width = fbo_width;   /* low-res target width */
+    ctx->fbo_height = fbo_height; /* low-res target height */
+
+    glGenFramebuffers(1, &ctx->fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo);
+
+    /* Color texture */
+    glGenTextures(1, &ctx->fbo_color);
+    glBindTexture(GL_TEXTURE_2D, ctx->fbo_color);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ctx->fbo_width, ctx->fbo_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->fbo_color, 0);
+
+    /* Depth buffer */
+    glGenRenderbuffers(1, &ctx->fbo_depth);
+    glBindRenderbuffer(GL_RENDERBUFFER, ctx->fbo_depth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, ctx->fbo_width, ctx->fbo_height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ctx->fbo_depth);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    {
+        print(__FILE__, __LINE__, "FBO incomplete!\n");
+        return false;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    return true;
+}
+
+BENEATH_API beneath_bool beneath_opengl_framebuffer_shader_load(beneath_opengl_context *ctx, beneath_api_io_print print)
+{
+    char *vertex_shader =
+        "#version 330 core                       \n"
+        "layout (location = 0) in vec2 aPos;     \n"
+        "layout (location = 1) in vec2 aUV;      \n"
+        "out vec2 vUV;                           \n"
+        "void main() {                           \n"
+        "    vUV = aUV;                          \n"
+        "    gl_Position = vec4(aPos, 0.0, 1.0); \n"
+        "}                                       \n";
+
+    char *fragment_shader =
+        "#version 330 core                        \n"
+        "in vec2 vUV;                             \n"
+        "out vec4 FragColor;                      \n"
+        "uniform sampler2D screenTex;             \n"
+        "void main() {                            \n"
+        "    FragColor = texture(screenTex, vUV); \n"
+        "}                                        \n";
+
+    int vertex_shader_id = beneath_opengl_shader_compile(vertex_shader, GL_VERTEX_SHADER, print);
+    int fragment_shader_id = beneath_opengl_shader_compile(fragment_shader, GL_FRAGMENT_SHADER, print);
+
+    /* Load shader */
+    {
+        int success;
+
+        ctx->blit_program = glCreateProgram();
+        glAttachShader(ctx->blit_program, (unsigned int)vertex_shader_id);
+        glAttachShader(ctx->blit_program, (unsigned int)fragment_shader_id);
+        glLinkProgram(ctx->blit_program);
+        ctx->blit_tex_uniform = glGetUniformLocation(ctx->blit_program, "screenTex");
+
+        glGetProgramiv(ctx->blit_program, GL_LINK_STATUS, &success);
+        glDeleteShader((unsigned int)vertex_shader_id);
+        glDeleteShader((unsigned int)fragment_shader_id);
+
+        if (!success)
+        {
+            char infoLog[1024];
+            glGetProgramInfoLog(ctx->blit_program, 1024, NULL, infoLog);
+            print(__FILE__, __LINE__, infoLog);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/******************************/
 /* Render Functions           */
 /******************************/
 static beneath_opengl_context ctx = {0};
@@ -367,7 +464,6 @@ BENEATH_API beneath_bool beneath_opengl_draw(
 
     if (!ctx.initialized)
     {
-
         if (!beneath_opengl_shader_load(&ctx, draw_call, print))
         {
 
@@ -384,6 +480,42 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         glGenBuffers(BENEATH_OPENGL_MESHES_MAX * BENEATH_OPENGL_SHADER_LAYOUT_COUNT, ctx.storage_buffer_object);
 
         ctx.initialized = true;
+
+        /* Pixel */
+        {
+            if (!beneath_opengl_framebuffer_shader_load(&ctx, print))
+            {
+                print(__FILE__, __LINE__, "cannot compile framebuffer shaders !!!\n");
+                return false;
+            }
+            /*
+                        if (!beneath_opengl_framebuffer_initialize(&ctx, print, (int)state->window_width / 2, (int)state->window_height / 2))
+              */
+            if (!beneath_opengl_framebuffer_initialize(&ctx, print, (int) 300, (int) 200))
+            {
+                print(__FILE__, __LINE__, "cannot initialize framebuffers!!!\n");
+                return false;
+            }
+
+            float quad_vertices[] = {
+                /* pos, uv */
+                -1.0f, -1.0f, 0.0f, 0.0f,
+                1.0f, -1.0f, 1.0f, 0.0f,
+                -1.0f, 1.0f, 0.0f, 1.0f,
+                1.0f, 1.0f, 1.0f, 1.0f};
+
+            glGenVertexArrays(1, &ctx.fbo_vao);
+            glGenBuffers(1, &ctx.fbo_vbo);
+
+            glBindVertexArray(ctx.fbo_vao);
+            glBindBuffer(GL_ARRAY_BUFFER, ctx.fbo_vbo);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
+
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
+        }
     }
 
     beneath_mesh *mesh = draw_call->mesh;
@@ -474,25 +606,46 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         glBindVertexArray(0);
     }
 
-    if (ctx.shaders_active_index != ctx.shaders_previous_index)
+    glBindFramebuffer(GL_FRAMEBUFFER, ctx.fbo);
+    glViewport(0, 0, ctx.fbo_width, ctx.fbo_height);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     {
+
+        /*
+        if (ctx.shaders_active_index != ctx.shaders_previous_index)
+        {
+
+            ctx.shaders_previous_index = ctx.shaders_active_index;
+        }
+        */
+
         glUseProgram(shader_active.program_id);
-        ctx.shaders_previous_index = ctx.shaders_active_index;
+        glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
+        glUniformMatrix4fv(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_PROJECTION_VIEW], 1, GL_FALSE, projection_view);
+
+        if (draw_call->changed)
+        {
+            glUniform1f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_TIME], (float)state->time);
+            glUniform1f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_DELTA_TIME], (float)state->delta_time);
+            glUniform2f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_RESOLUTION], (float)state->window_width, (float)state->window_height);
+            glUniform3f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_INSTANCE_COLOR], draw_call->colors[0], draw_call->colors[1], draw_call->colors[2]);
+        }
+
+        glDrawElementsInstanced(GL_TRIANGLES, (int)mesh->indices_count, GL_UNSIGNED_INT, 0, (int)draw_call->models_count);
+        glBindVertexArray(0);
     }
 
-    glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
-    glUniformMatrix4fv(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_PROJECTION_VIEW], 1, GL_FALSE, projection_view);
+    /* --- Post-process pixelated upscale --- */
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, (int)state->window_width, (int)state->window_height);
+    glClear(GL_COLOR_BUFFER_BIT);
 
-    if (draw_call->changed)
-    {
-        glUniform1f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_TIME], (float)state->time);
-        glUniform1f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_DELTA_TIME], (float)state->delta_time);
-        glUniform2f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_RESOLUTION], (float)state->window_width, (float)state->window_height);
-        glUniform3f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_INSTANCE_COLOR], draw_call->colors[0], draw_call->colors[1], draw_call->colors[2]);
-    }
-
-    glDrawElementsInstanced(GL_TRIANGLES, (int)mesh->indices_count, GL_UNSIGNED_INT, 0, (int)draw_call->models_count);
-    glBindVertexArray(0);
+    glUseProgram(ctx.blit_program);
+    glBindVertexArray(ctx.fbo_vao);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, ctx.fbo_color);
+    glUniform1i(ctx.blit_tex_uniform, 0);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
     draw_call->changed = false;
     draw_call->mesh->changed = false;

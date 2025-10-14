@@ -19,6 +19,14 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 
 #include "win32_api.h"
 
+#define GL_DEPTH_COMPONENT 0x1902
+#define GL_ALPHA 0x1906
+#define GL_RGB 0x1907
+#define GL_RGBA 0x1908
+#define GL_FRAMEBUFFER_UNDEFINED 0x8219
+#define GL_DEPTH_STENCIL_ATTACHMENT 0x821A
+#define GL_DEPTH24_STENCIL8 0x88F0
+
 /* OPENGL 1.X forward version calls which are no longer part of windows shipped libs*/
 typedef struct __GLsync *GLsync;
 typedef int (*PFNWGLCHOOSEPIXELFORMATARBPROC)(void *hdc, int *piAttribIList, float *pfAttribFList, unsigned int nMaxFormats, int *piFormats, unsigned int *nNumFormats);
