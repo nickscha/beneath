@@ -452,11 +452,13 @@ BENEATH_API beneath_bool beneath_opengl_draw(
 
     glUseProgram(shader_active.program_id);
     glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
+    glUniformMatrix4fv(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_PROJECTION_VIEW], 1, GL_FALSE, projection_view);
+
     if (draw_call->changed)
     {
-        glUniformMatrix4fv(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_PROJECTION_VIEW], 1, GL_FALSE, projection_view);
         glUniform3f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_INSTANCE_COLOR], draw_call->colors[0], draw_call->colors[1], draw_call->colors[2]);
     }
+
     glDrawElementsInstanced(GL_TRIANGLES, (int)mesh->indices_count, GL_UNSIGNED_INT, 0, (int)draw_call->models_count);
     glBindVertexArray(0);
 
