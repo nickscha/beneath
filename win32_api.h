@@ -241,6 +241,7 @@ typedef struct tagCREATESTRUCTA
 
 #define INFINITE 0xffffffff
 
+#define VREFRESH 116
 #define RIM_TYPEMOUSE 0
 #define RIM_TYPEKEYBOARD 1
 #define RIM_TYPEHID 2
@@ -448,6 +449,9 @@ typedef struct tagCREATESTRUCTA
 
 /* WIN32 Function prototyes */
 #ifndef _WINDOWS_
+
+WIN32_API(int)
+GetDeviceCaps(void *hdc, int index);
 
 WIN32_API(unsigned long)
 WaitForSingleObject(void *hHandle, unsigned long dwMilliseconds);

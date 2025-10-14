@@ -248,6 +248,14 @@ BENEATH_API BENEATH_INLINE void win32_beneath_enable_dpi_awareness(void)
     }
 }
 
+BENEATH_API BENEATH_INLINE int win32_beneath_get_monitor_refresh_rate(void *window)
+{
+    void *hdc = GetDC(window);
+    int rate = GetDeviceCaps(hdc, VREFRESH);
+    ReleaseDC(window, hdc);
+    return (rate > 1) ? rate : 60;
+}
+
 BENEATH_API BENEATH_INLINE void win32_precise_sleep(void **timer, double seconds)
 {
     LARGE_INTEGER li;
@@ -1042,6 +1050,9 @@ int mainCRTStartup(void)
     {
         return 1;
     }
+
+    /* TODO: proper vsync */
+    state->frames_per_second_target = win32_beneath_get_monitor_refresh_rate(window_handle);
 
 #ifdef BENEATH_LIB
     win32_beneath_load_application();
