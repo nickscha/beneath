@@ -39,6 +39,17 @@ static unsigned int cube_indices[] = {
     3, 7, 6,
     6, 2, 3};
 
+/* Per-vertex color (R, G, B) - normalized to 0..1 range like a normal map */
+static float cube_colors[] = {
+    0.25f, 0.25f, 0.25f,
+    0.75f, 0.25f, 0.25f,
+    0.75f, 0.75f, 0.25f,
+    0.25f, 0.75f, 0.25f,
+    0.25f, 0.25f, 0.75f,
+    0.75f, 0.25f, 0.75f,
+    0.75f, 0.75f, 0.75f,
+    0.25f, 0.75f, 0.75f};
+
 typedef struct app_state
 {
     unsigned int test;
@@ -49,6 +60,7 @@ typedef struct app_state
 static beneath_mesh mesh = {0};
 static beneath_draw_call draw_call = {0};
 static m4x4 model;
+static camera cam;
 static float color[3];
 
 void beneath_update(
@@ -76,6 +88,13 @@ void beneath_update(
         state->window_height = 400;
         state->changed_flags = BENEATH_STATE_CHANGED_FLAG_WINDOW;
 
+        /* Temporary Tests */
+        cam = camera_init();
+        cam.position.x = -1.0f;
+        cam.position.y = 1.0f;
+        cam.position.z = 3.0f;
+        camera_update_vectors(&cam);
+
         model = vm_m4x4_translate(vm_m4x4_identity, vm_v3_zero);
 
         color[0] = 0.8f;
@@ -87,8 +106,10 @@ void beneath_update(
         mesh.dynamic = true;
         mesh.vertices_count = BENEATH_ARRAY_SIZE(cube_vertices);
         mesh.indices_count = BENEATH_ARRAY_SIZE(cube_indices);
+        mesh.colors_count = BENEATH_ARRAY_SIZE(cube_colors);
         mesh.vertices = cube_vertices;
         mesh.indices = cube_indices;
+        mesh.colors = cube_colors;
 
         draw_call.id = 0;
         draw_call.data_capacity = 1;
@@ -96,8 +117,11 @@ void beneath_update(
         draw_call.mesh = &mesh;
         draw_call.models = model.e;
         draw_call.models_count = 1;
+
+        /*
         draw_call.colors = color;
         draw_call.colors_count = 1;
+        */
     }
 
     if (app->test)
@@ -127,17 +151,48 @@ void beneath_update(
         app->is_fullscreen = false;
     }
 
-    /* Draw Call Test */
+    if (input->keys[BENEATH_KEY_W].ended_down)
     {
-        camera cam = camera_init();
-        m4x4 projection;
-        m4x4 view;
-        m4x4 projection_view;
+        cam.position.z -= 5.0f * (float)state->delta_time;
+    }
 
+    if (input->keys[BENEATH_KEY_A].ended_down)
+    {
+        cam.position.x -= 5.0f * (float)state->delta_time;
+    }
+
+    if (input->keys[BENEATH_KEY_S].ended_down)
+    {
+        cam.position.z += 5.0f * (float)state->delta_time;
+    }
+
+    if (input->keys[BENEATH_KEY_D].ended_down)
+    {
+        cam.position.x += 5.0f * (float)state->delta_time;
+    }
+
+    if (input->keys[BENEATH_KEY_CONTROL].ended_down)
+    {
+        cam.position.y -= 5.0f * (float)state->delta_time;
+    }
+
+    if (input->keys[BENEATH_KEY_SPACE].ended_down)
+    {
+        cam.position.y += 5.0f * (float)state->delta_time;
+    }
+
+    if (input->keys[BENEATH_KEY_F5].pressed)
+    {
         cam.position.x = -1.0f;
         cam.position.y = 1.0f;
         cam.position.z = 3.0f;
-        camera_update_vectors(&cam);
+    }
+
+    /* Draw Call Test */
+    {
+        m4x4 projection;
+        m4x4 view;
+        m4x4 projection_view;
 
         projection = vm_m4x4_perspective(vm_radf(cam.fov), (float)state->window_width / (float)state->window_height, 0.1f, 1000.0f);
         view = vm_m4x4_lookAt(cam.position, vm_v3_zero, cam.up);

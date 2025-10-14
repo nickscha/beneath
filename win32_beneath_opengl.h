@@ -404,13 +404,17 @@ BENEATH_API beneath_bool beneath_opengl_framebuffer_shader_load(beneath_opengl_c
         "    gl_Position = vec4(aPos, 0.0, 1.0); \n"
         "}                                       \n";
 
+    /* "    FragColor = texture(screen_texture, vUV); \n" */
     char *fragment_shader =
         "#version 330 core                        \n"
+        "const float colors_per_channel = 16.0f;  \n"
         "in vec2 vUV;                             \n"
         "out vec4 FragColor;                      \n"
-        "uniform sampler2D screenTex;             \n"
+        "uniform sampler2D screen_texture;        \n"
         "void main() {                            \n"
-        "    FragColor = texture(screenTex, vUV); \n"
+        "    vec3 color = texture(screen_texture, vUV).rgb; \n"
+        "    vec3 quantized = floor(color * colors_per_channel) / colors_per_channel; \n"
+        "    FragColor = vec4(quantized, 1.0);    \n"
         "}                                        \n";
 
     int vertex_shader_id = beneath_opengl_shader_compile(vertex_shader, GL_VERTEX_SHADER, print);
@@ -424,7 +428,7 @@ BENEATH_API beneath_bool beneath_opengl_framebuffer_shader_load(beneath_opengl_c
         glAttachShader(ctx->blit_program, (unsigned int)vertex_shader_id);
         glAttachShader(ctx->blit_program, (unsigned int)fragment_shader_id);
         glLinkProgram(ctx->blit_program);
-        ctx->blit_tex_uniform = glGetUniformLocation(ctx->blit_program, "screenTex");
+        ctx->blit_tex_uniform = glGetUniformLocation(ctx->blit_program, "screen_texture");
 
         glGetProgramiv(ctx->blit_program, GL_LINK_STATUS, &success);
         glDeleteShader((unsigned int)vertex_shader_id);
@@ -491,7 +495,7 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             /*
                         if (!beneath_opengl_framebuffer_initialize(&ctx, print, (int)state->window_width / 2, (int)state->window_height / 2))
               */
-            if (!beneath_opengl_framebuffer_initialize(&ctx, print, (int) 300, (int) 200))
+            if (!beneath_opengl_framebuffer_initialize(&ctx, print, (int)300, (int)200))
             {
                 print(__FILE__, __LINE__, "cannot initialize framebuffers!!!\n");
                 return false;
@@ -583,18 +587,27 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         /* Vertex data */
         glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index]);
         glBufferData(GL_ARRAY_BUFFER, (int)mesh->vertices_count * (int)sizeof(float), mesh->vertices, GL_STATIC_DRAW);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
-        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_POSITION, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+        glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_POSITION);
 
         /* Index data */
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 1]);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, (int)mesh->indices_count * (int)sizeof(unsigned int), mesh->indices, GL_STATIC_DRAW);
 
+        /* Color data */
+        if (mesh->colors_count > 0)
+        {
+            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 3]);
+            glBufferData(GL_ARRAY_BUFFER, (int)mesh->colors_count * (int)sizeof(float), mesh->colors, GL_STATIC_DRAW);
+            glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_COLOR, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+            glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_COLOR);
+        }
+
         /* Instanced model */
         glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 2]);
         glBufferData(GL_ARRAY_BUFFER, (int)draw_call->models_count * sizeM4x4, &draw_call->models[0], GL_STATIC_DRAW);
 
-        /* set attribute pointers 2 - 5 for matrix (4 times vec4) */
+        /* set attribute pointers 6 - 9 for model matrix (4 times vec4) */
         for (i = 0; i < 4; ++i)
         {
             int model_location = BENEATH_OPENGL_SHADER_LAYOUT_INSTANCE_MODEL;
@@ -628,7 +641,11 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             glUniform1f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_TIME], (float)state->time);
             glUniform1f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_DELTA_TIME], (float)state->delta_time);
             glUniform2f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_RESOLUTION], (float)state->window_width, (float)state->window_height);
-            glUniform3f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_INSTANCE_COLOR], draw_call->colors[0], draw_call->colors[1], draw_call->colors[2]);
+
+            if (draw_call->colors_count > 0)
+            {
+                glUniform3f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_INSTANCE_COLOR], draw_call->colors[0], draw_call->colors[1], draw_call->colors[2]);
+            }
         }
 
         glDrawElementsInstanced(GL_TRIANGLES, (int)mesh->indices_count, GL_UNSIGNED_INT, 0, (int)draw_call->models_count);
