@@ -2,8 +2,9 @@
 #define BENEATH_PLATFORM_LAYER_NAME "win32_beneath"
 #include "beneath.h"
 
-#include "win32_api.h"    /* windows.h replacement   */
-#include "win32_opengl.h" /* opengl loading function */
+#include "win32_api.h"            /* windows.h replacement   */
+#include "win32_opengl.h"         /* opengl loading function */
+#include "win32_beneath_opengl.h" /* beneath opengl renderer */
 
 FILETIME win32_beneath_file_modification_time(char *file)
 {
@@ -32,7 +33,7 @@ BENEATH_API BENEATH_INLINE void win32_beneath_api_io_print(
 {
     unsigned long written;
     void *hConsole;
-    char output[256];
+    char output[2048];
     unsigned int len;
 
     /* Write filename:line prefix */
@@ -707,7 +708,7 @@ BENEATH_API BENEATH_INLINE beneath_bool win32_beneath_initialize_opengl(win32_be
     int contextAttribs[] = {
         WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
         WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-        WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
+        WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB | WGL_CONTEXT_DEBUG_BIT_ARB,
         WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
         0};
 
@@ -964,25 +965,11 @@ BENEATH_API beneath_bool win32_beneath_api_graphics_draw(
     float projection_view[16]     /* The projection view matrix */
 )
 {
-    (void)draw_call;
-    (void)projection_view;
-    (void)state;
-
-    if (!draw_call || draw_call->models_count == 0 || !draw_call->mesh)
-    {
-        return false;
-    }
-
-    if (draw_call->changed || draw_call->mesh->changed)
-    {
-        unsigned int hash = beneath_draw_call_hash(draw_call);
-        (void)hash;
-    }
-
-    draw_call->changed = false;
-    draw_call->mesh->changed = false;
-
-    return true;
+    return beneath_opengl_draw(
+        state,
+        draw_call,
+        projection_view,
+        win32_beneath_api_io_print);
 }
 
 #ifdef __clang__

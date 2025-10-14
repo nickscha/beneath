@@ -44,6 +44,9 @@ LICENSE
 #define BENEATH_STRINGIZE_DETAIL(x) #x
 #define BENEATH_STRINGIZE(x) BENEATH_STRINGIZE_DETAIL(x)
 
+/* Helper Macros */
+#define BENEATH_ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+
 #ifdef _MSC_VER
 #pragma function(memset)
 #endif
@@ -138,7 +141,7 @@ typedef struct beneath_mesh
   float *tangents;
   float *bitangents;
   float *colors;
-  int *indices;
+  unsigned int *indices;
 
 } beneath_mesh;
 
