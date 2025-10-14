@@ -754,6 +754,7 @@ BENEATH_API BENEATH_INLINE beneath_bool win32_beneath_initialize_opengl(win32_be
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
+    glDisable(GL_MULTISAMPLE);
     glViewport(0, 0, (int)state->window_width, (int)state->window_height);
 
     return true;
@@ -1070,6 +1071,7 @@ int mainCRTStartup(void)
 
         last_time = now;
         state->delta_time = delta * 1e-9;
+        state->time += state->delta_time;
         state->frames_per_second = (unsigned int)(1.0 / state->delta_time);
 
 #ifdef BENEATH_LIB

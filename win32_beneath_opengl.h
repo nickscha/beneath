@@ -88,6 +88,7 @@ typedef struct beneath_opengl_context
     /* Shaders */
     beneath_opengl_shader shaders[BENEATH_OPENGL_SHADERS_MAX];
     unsigned int shaders_size;
+    unsigned int shaders_previous_index;
     unsigned int shaders_active_index;
 
 } beneath_opengl_context;
@@ -115,6 +116,29 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
     sb_append_cstr(&fc, ") */\n");
     sb_append_cstr(&fc, "#version 330 core\n\n");
     sb_append_cstr(&fc, "in vec3 v_color;\n\n");
+
+    /* Uniforms */
+    sb_append_cstr(&fc, "/* Uniforms */\n");
+    sb_append_cstr(&fc, "uniform float time;            /* Global Elapsed seconds             */\n");
+    sb_append_cstr(&fc, "uniform float delta_time;      /* Global Seconds since last frame    */\n");
+    sb_append_cstr(&fc, "uniform vec2  resolution;      /* Global Screen width and height     */\n");
+    sb_append_cstr(&fc, "uniform vec3  camera_position; /* Global World space camera position */\n");
+    sb_append_cstr(&fc, "uniform mat4  pv;              /* Global Projection View Matrix      */\n");
+
+    /* If there is only one color or texture index it is better to pass it as a uniform and not as a instanced layout */
+    if (!use_mesh_color && draw_call->colors_count == 1)
+    {
+        layout_location_current = BENEATH_OPENGL_SHADER_LAYOUT_INSTANCE_COLOR;
+        sb_printf1(&fc, "uniform vec3  %s;           /* Instance Color */\n", (char *)beneath_opengl_shader_layout_names[layout_location_current]);
+    }
+
+    if (!use_mesh_color && draw_call->texture_indices_count == 1)
+    {
+        layout_location_current = BENEATH_OPENGL_SHADER_LAYOUT_INSTANCE_TEXTURE_INDEX;
+        sb_printf1(&fc, "uniform int   %s;   /* Instance Texture Index */\n", (char *)beneath_opengl_shader_layout_names[layout_location_current]);
+    }
+    sb_append_cstr(&fc, "\n");
+
     sb_append_cstr(&fc, "out vec4 FragColor;\n\n");
     sb_append_cstr(&fc, "void main()\n{\n");
     sb_append_cstr(&fc, "  FragColor = vec4(v_color, 1.0f);\n");
@@ -450,12 +474,20 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         glBindVertexArray(0);
     }
 
-    glUseProgram(shader_active.program_id);
+    if (ctx.shaders_active_index != ctx.shaders_previous_index)
+    {
+        glUseProgram(shader_active.program_id);
+        ctx.shaders_previous_index = ctx.shaders_active_index;
+    }
+
     glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
     glUniformMatrix4fv(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_PROJECTION_VIEW], 1, GL_FALSE, projection_view);
 
     if (draw_call->changed)
     {
+        glUniform1f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_TIME], (float)state->time);
+        glUniform1f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_DELTA_TIME], (float)state->delta_time);
+        glUniform2f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_RESOLUTION], (float)state->window_width, (float)state->window_height);
         glUniform3f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_INSTANCE_COLOR], draw_call->colors[0], draw_call->colors[1], draw_call->colors[2]);
     }
 

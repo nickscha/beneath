@@ -427,6 +427,7 @@ typedef struct beneath_state
   int frames_per_second_target; /* < 0 = VSYNC, 0 = unlimited, > 0 = Target FPS set to amount */
 
   unsigned int frames_per_second;
+  double time; /* Total elapsed time in seconds */
   double delta_time;
 
 } beneath_state;
