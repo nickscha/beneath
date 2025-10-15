@@ -68,8 +68,8 @@ typedef struct beneath_opengl_shader
 {
     unsigned int program_id;
     unsigned int hash;
-    char code_vertex[2048];
-    char code_fragment[2048];
+    char code_vertex[4096];
+    char code_fragment[4096];
     int uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_COUNT];
 
 } beneath_opengl_shader;
@@ -126,7 +126,15 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
     sb_append_ulong(&fc, hash, 8, SB_PAD_NONE);
     sb_append_cstr(&fc, ") */\n");
     sb_append_cstr(&fc, "#version 330 core\n\n");
-    sb_append_cstr(&fc, "in vec3 v_color;\n\n");
+    sb_append_cstr(&fc, "in vec3 v_color;\n");
+
+    if (draw_call->lightning)
+    {
+        sb_append_cstr(&fc, "in vec3 v_frag_pos;\n");
+        sb_append_cstr(&fc, "in vec3 v_normal;\n");
+    }
+
+    sb_append_cstr(&fc, "\n");
 
     /* Uniforms */
     sb_append_cstr(&fc, "/* Uniforms */\n");
@@ -150,12 +158,57 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
     }
     sb_append_cstr(&fc, "\n");
 
-    sb_append_cstr(&fc, "out vec4 FragColor;\n\n");
-    sb_append_cstr(&fc, "void main()\n{\n");
-    sb_append_cstr(&fc, "  FragColor = vec4(v_color, 1.0f);\n");
-    sb_append_cstr(&fc, "}\n\n");
+    if (draw_call->lightning)
+    {
+        sb_append_cstr(&fc, "/* Lighting structures */ \n");
+        sb_append_cstr(&fc, "struct DirectionalLight { \n");
+        sb_append_cstr(&fc, "    vec3 direction;       \n");
+        sb_append_cstr(&fc, "    vec3 ambient;         \n");
+        sb_append_cstr(&fc, "    vec3 diffuse;         \n");
+        sb_append_cstr(&fc, "    vec3 specular;        \n");
+        sb_append_cstr(&fc, "};                        \n");
+        sb_append_cstr(&fc, "\n");
+        sb_append_cstr(&fc, "uniform DirectionalLight dir_light;\n");
+        sb_append_cstr(&fc, "\n");
+
+        sb_append_cstr(&fc, "/* Function to calculate Blinn-Phong lighting from a directional light */     \n");
+        sb_append_cstr(&fc, "vec3 CalcDirectionalLight(DirectionalLight light, vec3 normal, vec3 view_dir) \n");
+        sb_append_cstr(&fc, "{                                                                             \n");
+        sb_append_cstr(&fc, "    vec3 light_dir = normalize(-light.direction);                             \n");
+        sb_append_cstr(&fc, "                                                                              \n");
+        sb_append_cstr(&fc, "    /* Diffuse term */                                                        \n");
+        sb_append_cstr(&fc, "    float diff = max(dot(normal, light_dir), 0.0);                            \n");
+        sb_append_cstr(&fc, "                                                                              \n");
+        sb_append_cstr(&fc, "    /* Specular term (Blinn-Phong) */                                         \n");
+        sb_append_cstr(&fc, "    vec3 halfway_dir = normalize(light_dir + view_dir);                       \n");
+        sb_append_cstr(&fc, "    float spec       = pow(max(dot(normal, halfway_dir), 0.0), 32.0);         \n");
+        sb_append_cstr(&fc, "    vec3 ambient     = light.ambient * v_color;                               \n");
+        sb_append_cstr(&fc, "    vec3 diffuse     = light.diffuse * diff * v_color;                        \n");
+        sb_append_cstr(&fc, "    vec3 specular    = light.specular * spec;                                 \n");
+        sb_append_cstr(&fc, "                                                                              \n");
+        sb_append_cstr(&fc, "    return ambient + diffuse + specular;                                      \n");
+        sb_append_cstr(&fc, "}                                                                             \n");
+        sb_append_cstr(&fc, "\n");
+        sb_append_cstr(&fc, "out vec4 FragColor;\n\n");
+        sb_append_cstr(&fc, "void main()                                                          \n");
+        sb_append_cstr(&fc, "{                                                                    \n");
+        sb_append_cstr(&fc, "    vec3 norm     = normalize(v_normal);                             \n");
+        sb_append_cstr(&fc, "    vec3 view_dir = normalize(camera_position - v_frag_pos);         \n");
+        sb_append_cstr(&fc, "    vec3 result   = CalcDirectionalLight(dir_light, norm, view_dir); \n");
+        sb_append_cstr(&fc, "    FragColor     = vec4(result, 1.0);                               \n");
+        sb_append_cstr(&fc, "}\n\n");
+    }
+    else
+    {
+        sb_append_cstr(&fc, "out vec4 FragColor;\n\n");
+        sb_append_cstr(&fc, "void main()\n{\n");
+        sb_append_cstr(&fc, "  FragColor = vec4(v_color, 1.0f);\n");
+        sb_append_cstr(&fc, "}\n\n");
+    }
+
     sb_term(&fc);
 
+    /* Vertex Shader */
     sb_init(&vc, vertex_shader_code_buffer, vertex_shader_code_buffer_size);
 
     sb_append_cstr(&vc, "/* Beneath Vertex Shader (hash=");
@@ -239,12 +292,32 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
     /* Outputs */
     sb_append_cstr(&vc, "/* Outputs */\n");
     sb_append_cstr(&vc, "out vec3 v_color;\n");
+
+    if (draw_call->lightning)
+    {
+        sb_append_cstr(&vc, "out vec3 v_normal;\n");
+        sb_append_cstr(&vc, "out vec3 v_frag_pos;\n");
+    }
+
     sb_append_cstr(&vc, "\n");
 
     /* Main */
     sb_append_cstr(&vc, "void main()\n{\n");
-    sb_append_cstr(&vc, "  v_color     = color;\n");
-    sb_append_cstr(&vc, "  gl_Position = pv * model * vec4(position, 1.0f);\n");
+
+    if (draw_call->lightning)
+    {
+        sb_append_cstr(&vc, "  vec4 world_pos = model * vec4(position, 1.0);\n\n");
+        sb_append_cstr(&vc, "  v_frag_pos     = world_pos.xyz;\n");
+        sb_append_cstr(&vc, "  v_normal       = mat3(transpose(inverse(model))) * normal;\n");
+        sb_append_cstr(&vc, "  v_color        = color;\n");
+        sb_append_cstr(&vc, "  gl_Position    = pv * world_pos;\n");
+    }
+    else
+    {
+        sb_append_cstr(&vc, "  v_color     = color;\n");
+        sb_append_cstr(&vc, "  gl_Position = pv * model * vec4(position, 1.0f);\n");
+    }
+
     sb_append_cstr(&vc, "}\n\n");
 
     sb_term(&vc);
@@ -455,12 +528,22 @@ BENEATH_API beneath_bool beneath_opengl_draw(
     beneath_state *state,         /* The state */
     beneath_draw_call *draw_call, /* The draw call instanced objects */
     float projection_view[16],    /* The projection view matrix */
-    float camera_position[3],      /* The camera x,y,z position */
+    float camera_position[3],     /* The camera x,y,z position */
     beneath_api_io_print print)
 {
-    (void)draw_call;
-    (void)projection_view;
-    (void)state;
+
+    /* Print FPS
+    {
+        char buffer[128];
+        sb dt = {0};
+        sb_init(&dt, buffer, 128);
+        sb_append_cstr(&dt, "[fps] : ");
+        sb_append_ulong(&dt, state->frames_per_second, 8, SB_PAD_LEFT);
+        sb_append_cstr(&dt, "\n");
+        sb_term(&dt);
+        print(__FILE__, __LINE__, buffer);
+    }
+    */
 
     if (!draw_call || draw_call->models_count == 0 || !draw_call->mesh)
     {
@@ -686,6 +769,15 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             if (draw_call->colors_count > 0)
             {
                 glUniform3f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_INSTANCE_COLOR], draw_call->colors[0], draw_call->colors[1], draw_call->colors[2]);
+            }
+
+            if (draw_call->lightning)
+            {   
+                beneath_light_directional* dl = &draw_call->lightning->directional;
+                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.direction"),dl->direction[0],dl->direction[1],dl->direction[2]);
+                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.ambient"),dl->ambient[0],dl->ambient[1],dl->ambient[2]);
+                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.diffuse"),dl->diffuse[0],dl->diffuse[1],dl->diffuse[2]);
+                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.specular"),dl->specular[0],dl->specular[1],dl->specular[2]);
             }
         }
 

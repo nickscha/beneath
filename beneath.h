@@ -194,7 +194,7 @@ typedef struct beneath_draw_call
   int *texture_indices; /* Instance data texture indices (1 int) */
 
   beneath_bool pixelize; /* Temporary */
-  beneath_lightning lightning;
+  beneath_lightning *lightning;
 
 } beneath_draw_call;
 
@@ -278,6 +278,10 @@ BENEATH_API BENEATH_INLINE unsigned int beneath_draw_call_hash(beneath_draw_call
 
   /* Texture indices: 0 = none, 1 = uniform, >1 = layout */
   hash ^= (dc->texture_indices_count == 0 ? 0 : (dc->texture_indices_count == 1 ? 1 : 2));
+  hash *= prime;
+
+  /* Lightning */
+  hash ^= (dc->lightning ? 1 : 0);
   hash *= prime;
 
   if (dc->mesh)

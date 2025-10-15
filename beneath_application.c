@@ -71,6 +71,7 @@ typedef struct app_state
 
 static beneath_mesh mesh = {0};
 static beneath_draw_call draw_call = {0};
+static beneath_lightning ligthning = {0};
 static m4x4 model;
 static camera cam;
 static float color[3];
@@ -136,12 +137,31 @@ void beneath_update(
         draw_call.colors = color;
         draw_call.colors_count = 1;
         */
-    }
 
-    if (app->test)
-    {
-        api->io_print(__FILE__, __LINE__, "Testflag was set\n");
-        app->test = 0;
+        /* Setup ligthning*/
+        {
+            v3 dl_direction = vm_v3(-0.3f, -1.0f, -0.2f);
+
+            /* Colors */
+            v3 dl_ambient = vm_v3(0.3f, 0.17f, 0.15f);
+            v3 dl_diffuse = vm_v3(1.0f, 0.95f, 0.8f);
+            v3 dl_specular = vm_v3(0.3f, 0.3f, 0.3f);
+
+            ligthning.directional.direction[0] = dl_direction.x;
+            ligthning.directional.direction[1] = dl_direction.y;
+            ligthning.directional.direction[2] = dl_direction.z;
+            ligthning.directional.ambient[0] = dl_ambient.x;
+            ligthning.directional.ambient[1] = dl_ambient.y;
+            ligthning.directional.ambient[2] = dl_ambient.z;
+            ligthning.directional.diffuse[0] = dl_diffuse.x;
+            ligthning.directional.diffuse[1] = dl_diffuse.y;
+            ligthning.directional.diffuse[2] = dl_diffuse.z;
+            ligthning.directional.specular[0] = dl_specular.x;
+            ligthning.directional.specular[1] = dl_specular.y;
+            ligthning.directional.specular[2] = dl_specular.z;
+
+            draw_call.lightning = &ligthning;
+        }
     }
 
     (void)state;
@@ -217,10 +237,9 @@ void beneath_update(
         camera_pos = vm_v3_data(&cam.position);
 
         api->graphics_draw(
-            state, 
-            &draw_call, 
+            state,
+            &draw_call,
             projection_view.e,
-            camera_pos
-        );
+            camera_pos);
     }
 }
