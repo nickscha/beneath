@@ -209,11 +209,18 @@ void beneath_update(
         m4x4 projection;
         m4x4 view;
         m4x4 projection_view;
+        float *camera_pos;
 
         projection = vm_m4x4_perspective(vm_radf(cam.fov), (float)state->window_width / (float)state->window_height, 0.1f, 1000.0f);
         view = vm_m4x4_lookAt(cam.position, vm_v3_zero, cam.up);
         projection_view = vm_m4x4_mul(projection, view);
+        camera_pos = vm_v3_data(&cam.position);
 
-        api->graphics_draw(state, &draw_call, projection_view.e);
+        api->graphics_draw(
+            state, 
+            &draw_call, 
+            projection_view.e,
+            camera_pos
+        );
     }
 }

@@ -470,7 +470,8 @@ typedef double (*beneath_api_perf_time_nanoseconds)(void);
 typedef beneath_bool (*beneath_api_graphics_draw)(
     beneath_state *state,         /* The state */
     beneath_draw_call *draw_call, /* The draw call instanced objects */
-    float projection_view[16]     /* The projection view matrix */
+    float projection_view[16],    /* The projection view matrix */
+    float camera_position[3]      /* The camera x,y,z position */
 );
 
 typedef struct beneath_api

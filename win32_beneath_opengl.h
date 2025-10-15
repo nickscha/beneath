@@ -455,6 +455,7 @@ BENEATH_API beneath_bool beneath_opengl_draw(
     beneath_state *state,         /* The state */
     beneath_draw_call *draw_call, /* The draw call instanced objects */
     float projection_view[16],    /* The projection view matrix */
+    float camera_position[3],      /* The camera x,y,z position */
     beneath_api_io_print print)
 {
     (void)draw_call;
@@ -674,6 +675,7 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         glUseProgram(shader_active.program_id);
         glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
         glUniformMatrix4fv(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_PROJECTION_VIEW], 1, GL_FALSE, projection_view);
+        glUniform3f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_CAMERA_POSITION], camera_position[0], camera_position[1], camera_position[2]);
 
         if (draw_call->changed)
         {
