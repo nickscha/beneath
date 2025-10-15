@@ -131,7 +131,6 @@ void beneath_update(
         draw_call.mesh = &mesh;
         draw_call.models = model.e;
         draw_call.models_count = 1;
-        draw_call.pixelize = true;
 
         /*
         draw_call.colors = color;
@@ -202,6 +201,8 @@ void beneath_update(
         cam.position.y = 1.0f;
         cam.position.z = 3.0f;
     }
+
+    draw_call.pixelize = input->keys[BENEATH_KEY_F1].active;
 
     /* Draw Call Test */
     {
