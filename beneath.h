@@ -145,6 +145,37 @@ typedef struct beneath_mesh
 
 } beneath_mesh;
 
+typedef struct beneath_light_directional
+{
+
+  float direction[3];
+  float ambient[3];
+  float diffuse[3];
+  float specular[3];
+
+} beneath_light_directional;
+
+typedef struct beneath_light_point
+{
+
+  float position[3];
+  float ambient[3];
+  float diffuse[3];
+  float specular[3];
+  float constant;
+  float linear;
+  float quadratic;
+
+} beneath_light_point;
+
+typedef struct beneath_lightning
+{
+
+  beneath_light_directional directional;
+  beneath_light_point point;
+
+} beneath_lightning;
+
 /* SoA style draw call */
 typedef struct beneath_draw_call
 {
@@ -163,6 +194,7 @@ typedef struct beneath_draw_call
   int *texture_indices; /* Instance data texture indices (1 int) */
 
   beneath_bool pixelize; /* Temporary */
+  beneath_lightning lightning;
 
 } beneath_draw_call;
 
