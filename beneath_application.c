@@ -69,10 +69,12 @@ typedef struct app_state
 
 } app_state;
 
+static float models[16 * 16];
 static beneath_mesh mesh = {0};
 static beneath_draw_call draw_call = {0};
 static beneath_lightning ligthning = {0};
 static m4x4 model;
+static m4x4 model_floor;
 static camera cam;
 static float color[3];
 
@@ -109,6 +111,7 @@ void beneath_update(
         camera_update_vectors(&cam);
 
         model = vm_m4x4_translate(vm_m4x4_identity, vm_v3_zero);
+        model_floor = vm_m4x4_scale(vm_m4x4_translate(vm_m4x4_identity, vm_v3(0.0f, -0.6f, 0.0f)), vm_v3(10.0f, 0.1f, 10.0f));
 
         color[0] = 0.8f;
         color[1] = 0.8f;
@@ -127,11 +130,14 @@ void beneath_update(
         mesh.colors = cube_colors;
 
         draw_call.id = 0;
-        draw_call.data_capacity = 1;
+        draw_call.data_capacity = 16;
         draw_call.changed = true;
         draw_call.mesh = &mesh;
-        draw_call.models = model.e;
-        draw_call.models_count = 1;
+
+        draw_call.models = models;
+
+        beneath_draw_call_append(&draw_call, model.e, (void *)0, -1);
+        beneath_draw_call_append(&draw_call, model_floor.e, (void *)0, -1);
 
         /*
         draw_call.colors = color;
@@ -223,6 +229,7 @@ void beneath_update(
     }
 
     draw_call.pixelize = input->keys[BENEATH_KEY_F1].active;
+    draw_call.shadow = true;
 
     /* Draw Call Test */
     {

@@ -195,6 +195,7 @@ typedef struct beneath_draw_call
 
   beneath_bool pixelize; /* Temporary */
   beneath_lightning *lightning;
+  beneath_bool shadow;
 
 } beneath_draw_call;
 

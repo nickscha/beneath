@@ -3,7 +3,8 @@
 
 #include "beneath.h"
 #include "win32_opengl.h"
-#include "sb.h"
+#include "sb.h" /* Temporary for prototype: String builder */
+#include "vm.h" /* Temporary for prototype: Vector math */
 
 /******************************/
 /* Types & Structs            */
@@ -102,7 +103,57 @@ typedef struct beneath_opengl_context
     int fbo_width;
     int fbo_height;
 
+    unsigned int shadow_program;
+    int shadow_uniform_pv;
+    unsigned int shadow_texture_depth;
+    m4x4 shadow_uniform_pv_data;
+    unsigned int shadow_fbo;
+
 } beneath_opengl_context;
+
+static char beneath_opengl_shader_shadow_vertex[] = {
+    " /* Beneath ShadowMap Vertex Shader */                     \n"
+    " #version 330 core                                         \n"
+    "                                                           \n"
+    " layout (location = 0) in vec3 position;                   \n"
+    " layout (location = 6) in mat4 model; /* Instanced data */ \n"
+    "                                                           \n"
+    " uniform mat4 pv;                                          \n"
+    "                                                           \n"
+    " void main()                                               \n"
+    " {                                                         \n"
+    "     gl_Position = pv * model * vec4(position, 1.0);       \n"
+    " }                                                         \n"};
+
+static char beneath_opengl_shader_shadow_fragment[] = {
+    "/* Beneath ShadowMap Fragment Shader */ \n"
+    "#version 330 core                       \n"
+    "void main()                             \n"
+    "{                                       \n"
+    "  /* Only writes depth automatically */ \n"
+    "}                                       \n"};
+
+static char beneath_opengl_shader_pixel_vertex[] = {
+    "#version 330 core                       \n"
+    "layout (location = 0) in vec2 aPos;     \n"
+    "layout (location = 1) in vec2 aUV;      \n"
+    "out vec2 vUV;                           \n"
+    "void main() {                           \n"
+    "    vUV = aUV;                          \n"
+    "    gl_Position = vec4(aPos, 0.0, 1.0); \n"
+    "}                                       \n"};
+
+static char beneath_opengl_shader_pixel_fragment[] = {
+    "#version 330 core                        \n"
+    "const float colors_per_channel = 16.0f;  \n"
+    "in vec2 vUV;                             \n"
+    "out vec4 FragColor;                      \n"
+    "uniform sampler2D screen_texture;        \n"
+    "void main() {                            \n"
+    "    vec3 color = texture(screen_texture, vUV).rgb; \n"
+    "    vec3 quantized = floor(color * colors_per_channel) / colors_per_channel; \n"
+    "    FragColor = vec4(quantized, 1.0);    \n"
+    "}                                        \n"};
 
 /******************************/
 /* Shader Functions           */
@@ -143,6 +194,11 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
     sb_append_cstr(&fc, "uniform vec2  resolution;      /* Global Screen width and height     */\n");
     sb_append_cstr(&fc, "uniform vec3  camera_position; /* Global World space camera position */\n");
     sb_append_cstr(&fc, "uniform mat4  pv;              /* Global Projection View Matrix      */\n");
+
+    if (draw_call->shadow)
+    {
+        sb_append_cstr(&fc, "uniform sampler2D shadow_map;\n");
+    }
 
     /* If there is only one color or texture index it is better to pass it as a uniform and not as a instanced layout */
     if (!use_mesh_color && draw_call->colors_count == 1)
@@ -465,56 +521,55 @@ BENEATH_API beneath_bool beneath_opengl_framebuffer_initialize(beneath_opengl_co
     return true;
 }
 
+BENEATH_API beneath_bool beneath_opengl_shader_program_load(unsigned int *shader_program, int vertex_shader_id, int fragment_shader_id, beneath_api_io_print print)
+{
+    int success;
+
+    *shader_program = glCreateProgram();
+    glAttachShader(*shader_program, (unsigned int)vertex_shader_id);
+    glAttachShader(*shader_program, (unsigned int)fragment_shader_id);
+    glLinkProgram(*shader_program);
+    glGetProgramiv(*shader_program, GL_LINK_STATUS, &success);
+    glDeleteShader((unsigned int)vertex_shader_id);
+    glDeleteShader((unsigned int)fragment_shader_id);
+
+    if (!success)
+    {
+        char infoLog[1024];
+        glGetProgramInfoLog(*shader_program, 1024, NULL, infoLog);
+        print(__FILE__, __LINE__, infoLog);
+        return false;
+    }
+
+    return true;
+}
+
 BENEATH_API beneath_bool beneath_opengl_framebuffer_shader_load(beneath_opengl_context *ctx, beneath_api_io_print print)
 {
-    char *vertex_shader =
-        "#version 330 core                       \n"
-        "layout (location = 0) in vec2 aPos;     \n"
-        "layout (location = 1) in vec2 aUV;      \n"
-        "out vec2 vUV;                           \n"
-        "void main() {                           \n"
-        "    vUV = aUV;                          \n"
-        "    gl_Position = vec4(aPos, 0.0, 1.0); \n"
-        "}                                       \n";
+    int vertex_shader_id = beneath_opengl_shader_compile(beneath_opengl_shader_pixel_vertex, GL_VERTEX_SHADER, print);
+    int fragment_shader_id = beneath_opengl_shader_compile(beneath_opengl_shader_pixel_fragment, GL_FRAGMENT_SHADER, print);
 
-    /* "    FragColor = texture(screen_texture, vUV); \n" */
-    char *fragment_shader =
-        "#version 330 core                        \n"
-        "const float colors_per_channel = 16.0f;  \n"
-        "in vec2 vUV;                             \n"
-        "out vec4 FragColor;                      \n"
-        "uniform sampler2D screen_texture;        \n"
-        "void main() {                            \n"
-        "    vec3 color = texture(screen_texture, vUV).rgb; \n"
-        "    vec3 quantized = floor(color * colors_per_channel) / colors_per_channel; \n"
-        "    FragColor = vec4(quantized, 1.0);    \n"
-        "}                                        \n";
-
-    int vertex_shader_id = beneath_opengl_shader_compile(vertex_shader, GL_VERTEX_SHADER, print);
-    int fragment_shader_id = beneath_opengl_shader_compile(fragment_shader, GL_FRAGMENT_SHADER, print);
-
-    /* Load shader */
+    if (!beneath_opengl_shader_program_load(&ctx->blit_program, vertex_shader_id, fragment_shader_id, print))
     {
-        int success;
-
-        ctx->blit_program = glCreateProgram();
-        glAttachShader(ctx->blit_program, (unsigned int)vertex_shader_id);
-        glAttachShader(ctx->blit_program, (unsigned int)fragment_shader_id);
-        glLinkProgram(ctx->blit_program);
-        ctx->blit_tex_uniform = glGetUniformLocation(ctx->blit_program, "screen_texture");
-
-        glGetProgramiv(ctx->blit_program, GL_LINK_STATUS, &success);
-        glDeleteShader((unsigned int)vertex_shader_id);
-        glDeleteShader((unsigned int)fragment_shader_id);
-
-        if (!success)
-        {
-            char infoLog[1024];
-            glGetProgramInfoLog(ctx->blit_program, 1024, NULL, infoLog);
-            print(__FILE__, __LINE__, infoLog);
-            return false;
-        }
+        return false;
     }
+
+    ctx->blit_tex_uniform = glGetUniformLocation(ctx->blit_program, "screen_texture");
+
+    return true;
+}
+
+BENEATH_API BENEATH_INLINE beneath_bool beneath_opengl_shader_shadow_load(beneath_opengl_context *ctx, beneath_api_io_print print)
+{
+    int vertex_shader_id = beneath_opengl_shader_compile(beneath_opengl_shader_shadow_vertex, GL_VERTEX_SHADER, print);
+    int fragment_shader_id = beneath_opengl_shader_compile(beneath_opengl_shader_shadow_fragment, GL_FRAGMENT_SHADER, print);
+
+    if (!beneath_opengl_shader_program_load(&ctx->shadow_program, vertex_shader_id, fragment_shader_id, print))
+    {
+        return false;
+    }
+
+    ctx->shadow_uniform_pv = glGetUniformLocation(ctx->shadow_program, "pv");
 
     return true;
 }
@@ -523,6 +578,64 @@ BENEATH_API beneath_bool beneath_opengl_framebuffer_shader_load(beneath_opengl_c
 /* Render Functions           */
 /******************************/
 static beneath_opengl_context ctx = {0};
+
+BENEATH_API void beneath_opengl_draw_call_print(beneath_draw_call *draw_call, beneath_api_io_print print)
+{
+    int i;
+    char buffer[1024];
+    sb tmp = {0};
+
+    beneath_mesh *mesh = draw_call->mesh;
+    beneath_opengl_shader shader_active = ctx.shaders[ctx.shaders_active_index];
+
+    sb_init(&tmp, buffer, 1024);
+    sb_append_cstr(&tmp, "\n");
+    sb_append_cstr(&tmp, "+----------------------------------------------+\n");
+    sb_append_cstr(&tmp, "| Mesh & Draw Call Information                 |\n");
+    sb_append_cstr(&tmp, "+----------------------------------------------+\n");
+    sb_append_cstr(&tmp, "| mesh->vertices_count            : ");
+    sb_append_ulong_direct(&tmp, mesh->vertices_count);
+    sb_append_cstr(&tmp, "\n");
+    sb_append_cstr(&tmp, "| mesh->indices_count             : ");
+    sb_append_ulong_direct(&tmp, mesh->indices_count);
+    sb_append_cstr(&tmp, "\n");
+    sb_append_cstr(&tmp, "| mesh->uvs_count                 : ");
+    sb_append_ulong_direct(&tmp, mesh->uvs_count);
+    sb_append_cstr(&tmp, "\n");
+    sb_append_cstr(&tmp, "| mesh->normals_count             : ");
+    sb_append_ulong_direct(&tmp, mesh->normals_count);
+    sb_append_cstr(&tmp, "\n");
+    sb_append_cstr(&tmp, "| mesh->tangents_count            : ");
+    sb_append_ulong_direct(&tmp, mesh->tangents_count);
+    sb_append_cstr(&tmp, "\n");
+    sb_append_cstr(&tmp, "| mesh->bitangents_count          : ");
+    sb_append_ulong_direct(&tmp, mesh->bitangents_count);
+    sb_append_cstr(&tmp, "\n");
+    sb_append_cstr(&tmp, "| mesh->colors_count              : ");
+    sb_append_ulong_direct(&tmp, mesh->colors_count);
+    sb_append_cstr(&tmp, "\n");
+    sb_append_cstr(&tmp, "| draw_call->models_count         : ");
+    sb_append_ulong_direct(&tmp, draw_call->models_count);
+    sb_append_cstr(&tmp, "\n");
+    sb_append_cstr(&tmp, "| draw_call->colors_count         : ");
+    sb_append_ulong_direct(&tmp, draw_call->colors_count);
+    sb_append_cstr(&tmp, "\n");
+    sb_append_cstr(&tmp, "| draw_call->texture_indices_count: ");
+    sb_append_ulong_direct(&tmp, draw_call->texture_indices_count);
+    sb_append_cstr(&tmp, "\n");
+
+    for (i = 0; i < BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_COUNT; ++i)
+    {
+        sb_append_cstr(&tmp, "| shader->uniform->");
+        sb_printf1(&tmp, "%15s: ", beneath_opengl_shader_uniform_names[i]);
+        sb_append_ulong_direct(&tmp, (unsigned long)shader_active.uniform_locations[i]);
+        sb_append_cstr(&tmp, "\n");
+    }
+    sb_append_cstr(&tmp, "+-----------------------------------------------\n\n");
+    sb_term(&tmp);
+
+    print(__FILE__, __LINE__, buffer);
+}
 
 BENEATH_API beneath_bool beneath_opengl_draw(
     beneath_state *state,         /* The state */
@@ -543,7 +656,7 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         sb_term(&dt);
         print(__FILE__, __LINE__, buffer);
     }
-    */
+     */
 
     if (!draw_call || draw_call->models_count == 0 || !draw_call->mesh)
     {
@@ -604,6 +717,41 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             glEnableVertexAttribArray(1);
             glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
         }
+
+        /* Shadow Map */
+        {
+#define SHADOW_SIZE 1024
+            float border_color[] = {1.0, 1.0, 1.0, 1.0};
+
+            if (!beneath_opengl_shader_shadow_load(&ctx, print))
+            {
+                print(__FILE__, __LINE__, "cannot compile shadow shaders !!!\n");
+                return false;
+            }
+
+            glGenTextures(1, &ctx.shadow_texture_depth);
+            glBindTexture(GL_TEXTURE_2D, ctx.shadow_texture_depth);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+            glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
+
+            glGenFramebuffers(1, &ctx.shadow_fbo);
+            glBindFramebuffer(GL_FRAMEBUFFER, ctx.shadow_fbo);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx.shadow_texture_depth, 0);
+            glDrawBuffer(GL_NONE);
+            glReadBuffer(GL_NONE);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+            v3 shadow_light_position = vm_v3(-0.3f * 10.0f, -1.0f * 10.0f, -0.2f * 10.0f);
+            m4x4 shadow_projection = vm_m4x4_orthographic(-10.0f, 10.0f, -10.0f, 10.0f, 1.0f, 20.0f);
+            m4x4 shadow_view = vm_m4x4_lookAt(shadow_light_position, vm_v3_zero, vm_v3_up);
+            m4x4 shadow_pv = vm_m4x4_mul(shadow_projection, shadow_view);
+
+            glUniformMatrix4fv(ctx.shadow_uniform_pv, 1, GL_FALSE, shadow_pv.e);
+        }
     }
 
     beneath_mesh *mesh = draw_call->mesh;
@@ -613,58 +761,10 @@ BENEATH_API beneath_bool beneath_opengl_draw(
     {
         int sizeM4x4 = sizeof(float) * 16;
         int i;
-        char buffer[1024];
-        sb tmp = {0};
 
         unsigned int buffer_index = mesh->id * BENEATH_OPENGL_SHADER_LAYOUT_COUNT;
 
-        sb_init(&tmp, buffer, 1024);
-        sb_append_cstr(&tmp, "\n");
-        sb_append_cstr(&tmp, "+----------------------------------------------+\n");
-        sb_append_cstr(&tmp, "| Mesh & Draw Call Information                 |\n");
-        sb_append_cstr(&tmp, "+----------------------------------------------+\n");
-        sb_append_cstr(&tmp, "| mesh->vertices_count            : ");
-        sb_append_ulong_direct(&tmp, mesh->vertices_count);
-        sb_append_cstr(&tmp, "\n");
-        sb_append_cstr(&tmp, "| mesh->indices_count             : ");
-        sb_append_ulong_direct(&tmp, mesh->indices_count);
-        sb_append_cstr(&tmp, "\n");
-        sb_append_cstr(&tmp, "| mesh->uvs_count                 : ");
-        sb_append_ulong_direct(&tmp, mesh->uvs_count);
-        sb_append_cstr(&tmp, "\n");
-        sb_append_cstr(&tmp, "| mesh->normals_count             : ");
-        sb_append_ulong_direct(&tmp, mesh->normals_count);
-        sb_append_cstr(&tmp, "\n");
-        sb_append_cstr(&tmp, "| mesh->tangents_count            : ");
-        sb_append_ulong_direct(&tmp, mesh->tangents_count);
-        sb_append_cstr(&tmp, "\n");
-        sb_append_cstr(&tmp, "| mesh->bitangents_count          : ");
-        sb_append_ulong_direct(&tmp, mesh->bitangents_count);
-        sb_append_cstr(&tmp, "\n");
-        sb_append_cstr(&tmp, "| mesh->colors_count              : ");
-        sb_append_ulong_direct(&tmp, mesh->colors_count);
-        sb_append_cstr(&tmp, "\n");
-        sb_append_cstr(&tmp, "| draw_call->models_count         : ");
-        sb_append_ulong_direct(&tmp, draw_call->models_count);
-        sb_append_cstr(&tmp, "\n");
-        sb_append_cstr(&tmp, "| draw_call->colors_count         : ");
-        sb_append_ulong_direct(&tmp, draw_call->colors_count);
-        sb_append_cstr(&tmp, "\n");
-        sb_append_cstr(&tmp, "| draw_call->texture_indices_count: ");
-        sb_append_ulong_direct(&tmp, draw_call->texture_indices_count);
-        sb_append_cstr(&tmp, "\n");
-
-        for (i = 0; i < BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_COUNT; ++i)
-        {
-            sb_append_cstr(&tmp, "| shader->uniform->");
-            sb_printf1(&tmp, "%15s: ", beneath_opengl_shader_uniform_names[i]);
-            sb_append_ulong_direct(&tmp, (unsigned long)shader_active.uniform_locations[i]);
-            sb_append_cstr(&tmp, "\n");
-        }
-        sb_append_cstr(&tmp, "+-----------------------------------------------\n\n");
-        sb_term(&tmp);
-
-        print(__FILE__, __LINE__, buffer);
+        beneath_opengl_draw_call_print(draw_call, print);
 
         glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
 
@@ -739,6 +839,22 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         glBindVertexArray(0);
     }
 
+    /* Shadow Map Render Pass */
+    if (draw_call->shadow)
+    {
+        glViewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
+        glBindFramebuffer(GL_FRAMEBUFFER, ctx.shadow_fbo);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        glUseProgram(ctx.shadow_program);
+
+        glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
+        glDrawElementsInstanced(GL_TRIANGLES, (int)mesh->indices_count, GL_UNSIGNED_INT, 0, (int)draw_call->models_count);
+        glBindVertexArray(0);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, (int)state->window_width, (int)state->window_height);
+    }
+
     if (draw_call->pixelize)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, ctx.fbo);
@@ -772,12 +888,12 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             }
 
             if (draw_call->lightning)
-            {   
-                beneath_light_directional* dl = &draw_call->lightning->directional;
-                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.direction"),dl->direction[0],dl->direction[1],dl->direction[2]);
-                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.ambient"),dl->ambient[0],dl->ambient[1],dl->ambient[2]);
-                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.diffuse"),dl->diffuse[0],dl->diffuse[1],dl->diffuse[2]);
-                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.specular"),dl->specular[0],dl->specular[1],dl->specular[2]);
+            {
+                beneath_light_directional *dl = &draw_call->lightning->directional;
+                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.direction"), dl->direction[0], dl->direction[1], dl->direction[2]);
+                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.ambient"), dl->ambient[0], dl->ambient[1], dl->ambient[2]);
+                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.diffuse"), dl->diffuse[0], dl->diffuse[1], dl->diffuse[2]);
+                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.specular"), dl->specular[0], dl->specular[1], dl->specular[2]);
             }
         }
 
