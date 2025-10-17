@@ -810,7 +810,7 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
             v3 shadow_light_position = vm_v3(-5.0f, 7.0f, 4.0f);
-            m4x4 shadow_projection = vm_m4x4_orthographic(-20.0f, 20.0f, -20.0f, 20.0f, 1.0f, 50.0f);
+            m4x4 shadow_projection = vm_m4x4_orthographic(-10.0f, 10.0f, -10.0f, 10.0f, 1.0f, 50.0f);
             m4x4 shadow_view = vm_m4x4_lookAt(shadow_light_position, vm_v3_zero, vm_v3_up);
             shadow_pv = vm_m4x4_mul(shadow_projection, shadow_view);
         }

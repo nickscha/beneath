@@ -113,7 +113,7 @@ void beneath_update(
         camera_update_vectors(&cam);
 
         model = vm_m4x4_translate(vm_m4x4_identity, vm_v3_zero);
-        model_floor = vm_m4x4_scale(vm_m4x4_translate(vm_m4x4_identity, vm_v3(0.0f, -0.6f, 0.0f)), vm_v3(10.0f, 0.1f, 10.0f));
+        model_floor = vm_m4x4_scale(vm_m4x4_translate(vm_m4x4_identity, vm_v3(0.0f, -1.0f, 0.0f)), vm_v3(10.0f, 0.1f, 10.0f));
         model_other = vm_m4x4_translate(vm_m4x4_identity, vm_v3(-2.0f, 2.0f, 0.5f));
         model_next = vm_m4x4_scale(vm_m4x4_translate(vm_m4x4_identity, vm_v3(1.0f, 1.0f, -1.0f)), vm_v3(0.2f, 0.2f, 5.0f));
 
