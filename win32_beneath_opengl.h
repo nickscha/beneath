@@ -41,13 +41,16 @@ static char beneath_opengl_shader_pixel_vertex[] = {
 static char beneath_opengl_shader_pixel_fragment[] = {
     "#version 330 core                        \n"
     "const float colors_per_channel = 16.0f;  \n"
+    "const float gamma = 2.2f;                \n"
     "in vec2 vUV;                             \n"
     "out vec4 FragColor;                      \n"
     "uniform sampler2D screen_texture;        \n"
     "void main() {                            \n"
-    "    vec3 color = texture(screen_texture, vUV).rgb; \n"
-    "    vec3 quantized = floor(color * colors_per_channel) / colors_per_channel; \n"
-    "    FragColor = vec4(quantized, 1.0);    \n"
+    "    vec3 color = texture(screen_texture, vUV).rgb;\n"
+    "    color = pow(color, vec3(1.0 / gamma));\n"
+    "    vec3 quantized = (floor(color * colors_per_channel) + 0.5) / colors_per_channel;\n"
+    "    quantized = pow(quantized, vec3(gamma));\n"
+    "    FragColor = vec4(quantized, 1.0);\n"
     "}                                        \n"};
 
 /******************************/
@@ -785,7 +788,7 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         /* Shadow Map */
         {
 #define SHADOW_SIZE 1024
-            float border_color[] =   {1.0, 1.0, 1.0, 1.0};
+            float border_color[] = {1.0, 1.0, 1.0, 1.0};
 
             if (!beneath_opengl_shader_shadow_load(&ctx, print))
             {
