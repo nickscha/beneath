@@ -1,5 +1,6 @@
 #include "beneath.h"
 #include "vm.h"
+#include "sb.h"
 #include "camera.h"
 
 static float cube_vertices[] = {
@@ -236,6 +237,19 @@ void beneath_update(
 
     draw_call.pixelize = input->keys[BENEATH_KEY_F1].active;
     draw_call.shadow = true;
+
+    /* Print FPS */
+    if (input->keys[BENEATH_KEY_F2].pressed)
+    {
+        char buffer[128];
+        sb dt = {0};
+        sb_init(&dt, buffer, 128);
+        sb_append_cstr(&dt, "[fps] : ");
+        sb_append_ulong(&dt, state->frames_per_second, 8, SB_PAD_LEFT);
+        sb_append_cstr(&dt, "\n");
+        sb_term(&dt);
+        api->io_print(__FILE__, __LINE__, buffer);
+    }
 
     /* Draw Call Test */
     {

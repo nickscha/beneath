@@ -900,6 +900,11 @@ BENEATH_API BENEATH_INLINE void win32_beneath_update_state(beneath_state *state,
             }
         }
 
+        if (state->frames_per_second_target <= BENEATH_STATE_FRAMES_PER_SECOND_VSYNC)
+        {
+            state->frames_per_second_target = win32_beneath_get_monitor_refresh_rate(*window_handle);
+        }
+
         state->changed_flags &= ~(unsigned int)BENEATH_STATE_CHANGED_FLAG_FRAMES_PER_SECOND_TARGET;
     }
 }

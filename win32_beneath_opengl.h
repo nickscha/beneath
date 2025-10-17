@@ -45,12 +45,25 @@ static char beneath_opengl_shader_pixel_fragment[] = {
     "in vec2 vUV;                             \n"
     "out vec4 FragColor;                      \n"
     "uniform sampler2D screen_texture;        \n"
+    "uniform vec2 texel_size;                 \n" // 1.0 / FBO size
     "void main() {                            \n"
     "    vec3 color = texture(screen_texture, vUV).rgb;\n"
     "    color = pow(color, vec3(1.0 / gamma));\n"
     "    vec3 quantized = (floor(color * colors_per_channel) + 0.5) / colors_per_channel;\n"
     "    quantized = pow(quantized, vec3(gamma));\n"
-    "    FragColor = vec4(quantized, 1.0);\n"
+    "\n"
+    "    // --- Edge detection ---\n"
+    "    vec3 north = texture(screen_texture, vUV + vec2(0.0, texel_size.y)).rgb;\n"
+    "    vec3 south = texture(screen_texture, vUV - vec2(0.0, texel_size.y)).rgb;\n"
+    "    vec3 east  = texture(screen_texture, vUV + vec2(texel_size.x, 0.0)).rgb;\n"
+    "    vec3 west  = texture(screen_texture, vUV - vec2(texel_size.x, 0.0)).rgb;\n"
+    "\n"
+    "    float edge = length(north - south) + length(east - west);\n"
+    "    edge = clamp(edge * 0.5, 0.0, 1.0); // tweak strength\n"
+    "\n"
+    "    // --- Combine quantized color and edge ---\n"
+    "     vec3 edge_color = vec3(0.2, 0.2, 0.2);\n"
+    "    FragColor = vec4(mix(quantized, edge_color, edge), 1.0);\n"
     "}                                        \n"};
 
 /******************************/
@@ -103,7 +116,7 @@ typedef enum beneath_opengl_shader_uniform_locations
 
 } beneath_opengl_shader_uniform_locations;
 
-static char *beneath_opengl_shader_uniform_names[8] = {
+static char *beneath_opengl_shader_uniform_names[7] = {
     "time",
     "delta_time",
     "resolution",
@@ -147,6 +160,7 @@ typedef struct beneath_opengl_context
     unsigned int fbo_vbo;
     unsigned int blit_program;
     int blit_tex_uniform;
+    int blit_texel_uniform;
     int fbo_width;
     int fbo_height;
 
@@ -620,6 +634,7 @@ BENEATH_API beneath_bool beneath_opengl_framebuffer_shader_load(beneath_opengl_c
     }
 
     ctx->blit_tex_uniform = glGetUniformLocation(ctx->blit_program, "screen_texture");
+    ctx->blit_texel_uniform = glGetUniformLocation(ctx->blit_program, "texel_size");
 
     return true;
 }
@@ -712,19 +727,6 @@ BENEATH_API beneath_bool beneath_opengl_draw(
     beneath_api_io_print print)
 {
 
-    /* Print FPS
-    {
-        char buffer[128];
-        sb dt = {0};
-        sb_init(&dt, buffer, 128);
-        sb_append_cstr(&dt, "[fps] : ");
-        sb_append_ulong(&dt, state->frames_per_second, 8, SB_PAD_LEFT);
-        sb_append_cstr(&dt, "\n");
-        sb_term(&dt);
-        print(__FILE__, __LINE__, buffer);
-    }
-     */
-
     if (!draw_call || draw_call->models_count == 0 || !draw_call->mesh)
     {
         return false;
@@ -739,10 +741,12 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             return false;
         }
 
+        /*
         print(__FILE__, __LINE__, "Vertex Shader Code:\n");
         print(__FILE__, __LINE__, ctx.shaders[ctx.shaders_active_index].code_vertex);
         print(__FILE__, __LINE__, "Fragment Shader Code:\n");
         print(__FILE__, __LINE__, ctx.shaders[ctx.shaders_active_index].code_fragment);
+*/
 
         glGenVertexArrays(BENEATH_OPENGL_MESHES_MAX, ctx.storage_vertex_array);
         glGenBuffers(BENEATH_OPENGL_MESHES_MAX * BENEATH_OPENGL_SHADER_LAYOUT_COUNT, ctx.storage_buffer_object);
@@ -986,6 +990,7 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, ctx.fbo_color);
         glUniform1i(ctx.blit_tex_uniform, 0);
+        glUniform2f(ctx.blit_texel_uniform, 1.0f / (float)ctx.fbo_width, 1.0f / (float)ctx.fbo_height);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     }
 
