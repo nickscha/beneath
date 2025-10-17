@@ -75,6 +75,8 @@ static beneath_draw_call draw_call = {0};
 static beneath_lightning ligthning = {0};
 static m4x4 model;
 static m4x4 model_floor;
+static m4x4 model_other;
+static m4x4 model_next;
 static camera cam;
 static float color[3];
 
@@ -112,6 +114,8 @@ void beneath_update(
 
         model = vm_m4x4_translate(vm_m4x4_identity, vm_v3_zero);
         model_floor = vm_m4x4_scale(vm_m4x4_translate(vm_m4x4_identity, vm_v3(0.0f, -0.6f, 0.0f)), vm_v3(10.0f, 0.1f, 10.0f));
+        model_other = vm_m4x4_translate(vm_m4x4_identity, vm_v3(-2.0f, 2.0f, 0.5f));
+        model_next = vm_m4x4_scale(vm_m4x4_translate(vm_m4x4_identity, vm_v3(1.0f, 1.0f, -1.0f)), vm_v3(0.2f, 0.2f, 5.0f));
 
         color[0] = 0.8f;
         color[1] = 0.8f;
@@ -138,6 +142,8 @@ void beneath_update(
 
         beneath_draw_call_append(&draw_call, model.e, (void *)0, -1);
         beneath_draw_call_append(&draw_call, model_floor.e, (void *)0, -1);
+        beneath_draw_call_append(&draw_call, model_other.e, (void *)0, -1);
+        beneath_draw_call_append(&draw_call, model_next.e, (void *)0, -1);
 
         /*
         draw_call.colors = color;
@@ -146,7 +152,7 @@ void beneath_update(
 
         /* Setup ligthning*/
         {
-            v3 dl_direction = vm_v3(-0.3f, -1.0f, -0.2f);
+            v3 dl_direction = vm_v3_normalize(vm_v3(5.0f, -7.0f, -4.0f));
 
             /* Colors */
             v3 dl_ambient = vm_v3(0.3f, 0.17f, 0.15f);

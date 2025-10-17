@@ -33,7 +33,7 @@ BENEATH_API BENEATH_INLINE void win32_beneath_api_io_print(
 {
     unsigned long written;
     void *hConsole;
-    char output[4096];
+    char output[8192];
     unsigned int len;
 
     /* Write filename:line prefix */

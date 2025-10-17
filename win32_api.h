@@ -413,6 +413,7 @@ typedef struct tagCREATESTRUCTA
 #define GL_LINE 0x1B01
 #define GL_FILL 0x1B02
 #define GL_CULL_FACE 0x0B44
+#define GL_FRONT 0x0404
 #define GL_BACK 0x0405
 #define GL_CCW 0x0901
 #define GL_ELEMENT_ARRAY_BUFFER 0x8893

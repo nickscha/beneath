@@ -6,6 +6,50 @@
 #include "sb.h" /* Temporary for prototype: String builder */
 #include "vm.h" /* Temporary for prototype: Vector math */
 
+static char beneath_opengl_shader_shadow_vertex[] = {
+    " /* Beneath ShadowMap Vertex Shader */                     \n"
+    " #version 330 core                                         \n"
+    "                                                           \n"
+    " layout (location = 0) in vec3 position;                   \n"
+    " layout (location = 6) in mat4 model; /* Instanced data */ \n"
+    "                                                           \n"
+    " uniform mat4 pv;                                          \n"
+    "                                                           \n"
+    " void main()                                               \n"
+    " {                                                         \n"
+    "     gl_Position = pv * model * vec4(position, 1.0);       \n"
+    " }                                                         \n"};
+
+static char beneath_opengl_shader_shadow_fragment[] = {
+    "/* Beneath ShadowMap Fragment Shader */ \n"
+    "#version 330 core                       \n"
+    "void main()                             \n"
+    "{                                       \n"
+    "  /* Only writes depth automatically */ \n"
+    "}                                       \n"};
+
+static char beneath_opengl_shader_pixel_vertex[] = {
+    "#version 330 core                       \n"
+    "layout (location = 0) in vec2 aPos;     \n"
+    "layout (location = 1) in vec2 aUV;      \n"
+    "out vec2 vUV;                           \n"
+    "void main() {                           \n"
+    "    vUV = aUV;                          \n"
+    "    gl_Position = vec4(aPos, 0.0, 1.0); \n"
+    "}                                       \n"};
+
+static char beneath_opengl_shader_pixel_fragment[] = {
+    "#version 330 core                        \n"
+    "const float colors_per_channel = 16.0f;  \n"
+    "in vec2 vUV;                             \n"
+    "out vec4 FragColor;                      \n"
+    "uniform sampler2D screen_texture;        \n"
+    "void main() {                            \n"
+    "    vec3 color = texture(screen_texture, vUV).rgb; \n"
+    "    vec3 quantized = floor(color * colors_per_channel) / colors_per_channel; \n"
+    "    FragColor = vec4(quantized, 1.0);    \n"
+    "}                                        \n"};
+
 /******************************/
 /* Types & Structs            */
 /******************************/
@@ -69,8 +113,8 @@ typedef struct beneath_opengl_shader
 {
     unsigned int program_id;
     unsigned int hash;
-    char code_vertex[4096];
-    char code_fragment[4096];
+    char code_vertex[8192];
+    char code_fragment[8192];
     int uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_COUNT];
 
 } beneath_opengl_shader;
@@ -111,50 +155,6 @@ typedef struct beneath_opengl_context
 
 } beneath_opengl_context;
 
-static char beneath_opengl_shader_shadow_vertex[] = {
-    " /* Beneath ShadowMap Vertex Shader */                     \n"
-    " #version 330 core                                         \n"
-    "                                                           \n"
-    " layout (location = 0) in vec3 position;                   \n"
-    " layout (location = 6) in mat4 model; /* Instanced data */ \n"
-    "                                                           \n"
-    " uniform mat4 pv;                                          \n"
-    "                                                           \n"
-    " void main()                                               \n"
-    " {                                                         \n"
-    "     gl_Position = pv * model * vec4(position, 1.0);       \n"
-    " }                                                         \n"};
-
-static char beneath_opengl_shader_shadow_fragment[] = {
-    "/* Beneath ShadowMap Fragment Shader */ \n"
-    "#version 330 core                       \n"
-    "void main()                             \n"
-    "{                                       \n"
-    "  /* Only writes depth automatically */ \n"
-    "}                                       \n"};
-
-static char beneath_opengl_shader_pixel_vertex[] = {
-    "#version 330 core                       \n"
-    "layout (location = 0) in vec2 aPos;     \n"
-    "layout (location = 1) in vec2 aUV;      \n"
-    "out vec2 vUV;                           \n"
-    "void main() {                           \n"
-    "    vUV = aUV;                          \n"
-    "    gl_Position = vec4(aPos, 0.0, 1.0); \n"
-    "}                                       \n"};
-
-static char beneath_opengl_shader_pixel_fragment[] = {
-    "#version 330 core                        \n"
-    "const float colors_per_channel = 16.0f;  \n"
-    "in vec2 vUV;                             \n"
-    "out vec4 FragColor;                      \n"
-    "uniform sampler2D screen_texture;        \n"
-    "void main() {                            \n"
-    "    vec3 color = texture(screen_texture, vUV).rgb; \n"
-    "    vec3 quantized = floor(color * colors_per_channel) / colors_per_channel; \n"
-    "    FragColor = vec4(quantized, 1.0);    \n"
-    "}                                        \n"};
-
 /******************************/
 /* Shader Functions           */
 /******************************/
@@ -183,6 +183,11 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
     {
         sb_append_cstr(&fc, "in vec3 v_frag_pos;\n");
         sb_append_cstr(&fc, "in vec3 v_normal;\n");
+    }
+
+    if (draw_call->shadow)
+    {
+        sb_append_cstr(&fc, "in vec4 v_frag_pos_light_space;\n");
     }
 
     sb_append_cstr(&fc, "\n");
@@ -214,6 +219,48 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
     }
     sb_append_cstr(&fc, "\n");
 
+    if (draw_call->shadow)
+    {
+        sb_append_cstr(&fc,
+                       "float rand(vec2 co)\n"
+                       "{\n"
+                       "    return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);\n"
+                       "}\n"
+                       "\n"
+                       "float ShadowCalculation(vec4 frag_pos_light_space, vec3 normal, vec3 light_dir)\n"
+                       "{\n"
+                       "    // Transform to [0,1] range\n"
+                       "    vec3 proj_coords = frag_pos_light_space.xyz / frag_pos_light_space.w;\n"
+                       "    proj_coords = proj_coords * 0.5 + 0.5;\n"
+                       "\n"
+                       "    if (proj_coords.z > 1.0)\n"
+                       "        return 0.0;\n"
+                       "\n"
+                       "    float bias = max(0.005 * (1.0 - dot(normalize(normal), normalize(-light_dir))), 0.001);\n"
+                       "\n"
+                       "    float shadow = 0.0;\n"
+                       "    vec2 texel_size = 1.0 / textureSize(shadow_map, 0);\n"
+                       "\n"
+                       "    // Generate a pseudo-random rotation per fragment\n"
+                       "    float angle = rand(proj_coords.xy) * 6.2831853; // 0..2PI\n"
+                       "    mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));\n"
+                       "\n"
+                       "    // 3x3 PCF kernel with randomized rotation\n"
+                       "    for (int x = -1; x <= 1; ++x)\n"
+                       "    {\n"
+                       "        for (int y = -1; y <= 1; ++y)\n"
+                       "        {\n"
+                       "            vec2 offset = rot * vec2(x, y) * texel_size;\n"
+                       "            float pcf_depth = texture(shadow_map, proj_coords.xy + offset).r;\n"
+                       "            shadow += (proj_coords.z - bias > pcf_depth ? 1.0 : 0.0);\n"
+                       "        }\n"
+                       "    }\n"
+                       "\n"
+                       "    shadow /= 9.0;\n"
+                       "    return shadow;\n"
+                       "}\n\n");
+    }
+
     if (draw_call->lightning)
     {
         sb_append_cstr(&fc, "/* Lighting structures */ \n");
@@ -228,7 +275,7 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
         sb_append_cstr(&fc, "\n");
 
         sb_append_cstr(&fc, "/* Function to calculate Blinn-Phong lighting from a directional light */     \n");
-        sb_append_cstr(&fc, "vec3 CalcDirectionalLight(DirectionalLight light, vec3 normal, vec3 view_dir) \n");
+        sb_append_cstr(&fc, "vec3 CalcDirectionalLight(DirectionalLight light, vec3 normal, vec3 view_dir, float shadow) \n");
         sb_append_cstr(&fc, "{                                                                             \n");
         sb_append_cstr(&fc, "    vec3 light_dir = normalize(-light.direction);                             \n");
         sb_append_cstr(&fc, "                                                                              \n");
@@ -242,7 +289,7 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
         sb_append_cstr(&fc, "    vec3 diffuse     = light.diffuse * diff * v_color;                        \n");
         sb_append_cstr(&fc, "    vec3 specular    = light.specular * spec;                                 \n");
         sb_append_cstr(&fc, "                                                                              \n");
-        sb_append_cstr(&fc, "    return ambient + diffuse + specular;                                      \n");
+        sb_append_cstr(&fc, "    return ambient + (1.0 - shadow) * (diffuse + specular);                   \n");
         sb_append_cstr(&fc, "}                                                                             \n");
         sb_append_cstr(&fc, "\n");
         sb_append_cstr(&fc, "out vec4 FragColor;\n\n");
@@ -250,7 +297,8 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
         sb_append_cstr(&fc, "{                                                                    \n");
         sb_append_cstr(&fc, "    vec3 norm     = normalize(v_normal);                             \n");
         sb_append_cstr(&fc, "    vec3 view_dir = normalize(camera_position - v_frag_pos);         \n");
-        sb_append_cstr(&fc, "    vec3 result   = CalcDirectionalLight(dir_light, norm, view_dir); \n");
+        sb_append_cstr(&fc, "    float shadow  = ShadowCalculation(v_frag_pos_light_space,norm, dir_light.direction);       \n");
+        sb_append_cstr(&fc, "    vec3 result   = CalcDirectionalLight(dir_light, norm, view_dir, shadow); \n");
         sb_append_cstr(&fc, "    FragColor     = vec4(result, 1.0);                               \n");
         sb_append_cstr(&fc, "}\n\n");
     }
@@ -343,6 +391,11 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
         sb_printf1(&vc, "uniform int   %s;   /* Instance Texture Index */\n", (char *)beneath_opengl_shader_layout_names[layout_location_current]);
     }
 
+    if (draw_call->shadow)
+    {
+        sb_append_cstr(&vc, "uniform mat4 light_space_matrix; \n");
+    }
+
     sb_append_cstr(&vc, "\n");
 
     /* Outputs */
@@ -353,6 +406,11 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
     {
         sb_append_cstr(&vc, "out vec3 v_normal;\n");
         sb_append_cstr(&vc, "out vec3 v_frag_pos;\n");
+    }
+
+    if (draw_call->shadow)
+    {
+        sb_append_cstr(&vc, "out vec4 v_frag_pos_light_space; \n");
     }
 
     sb_append_cstr(&vc, "\n");
@@ -366,6 +424,10 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
         sb_append_cstr(&vc, "  v_frag_pos     = world_pos.xyz;\n");
         sb_append_cstr(&vc, "  v_normal       = mat3(transpose(inverse(model))) * normal;\n");
         sb_append_cstr(&vc, "  v_color        = color;\n");
+        if (draw_call->shadow)
+        {
+            sb_append_cstr(&vc, "  v_frag_pos_light_space = light_space_matrix * world_pos;\n");
+        }
         sb_append_cstr(&vc, "  gl_Position    = pv * world_pos;\n");
     }
     else
@@ -637,6 +699,8 @@ BENEATH_API void beneath_opengl_draw_call_print(beneath_draw_call *draw_call, be
     print(__FILE__, __LINE__, buffer);
 }
 
+static m4x4 shadow_pv;
+
 BENEATH_API beneath_bool beneath_opengl_draw(
     beneath_state *state,         /* The state */
     beneath_draw_call *draw_call, /* The draw call instanced objects */
@@ -721,7 +785,7 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         /* Shadow Map */
         {
 #define SHADOW_SIZE 1024
-            float border_color[] = {1.0, 1.0, 1.0, 1.0};
+            float border_color[] =   {1.0, 1.0, 1.0, 1.0};
 
             if (!beneath_opengl_shader_shadow_load(&ctx, print))
             {
@@ -745,12 +809,10 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             glReadBuffer(GL_NONE);
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-            v3 shadow_light_position = vm_v3(-0.3f * 10.0f, -1.0f * 10.0f, -0.2f * 10.0f);
-            m4x4 shadow_projection = vm_m4x4_orthographic(-10.0f, 10.0f, -10.0f, 10.0f, 1.0f, 20.0f);
+            v3 shadow_light_position = vm_v3(-5.0f, 7.0f, 4.0f);
+            m4x4 shadow_projection = vm_m4x4_orthographic(-20.0f, 20.0f, -20.0f, 20.0f, 1.0f, 50.0f);
             m4x4 shadow_view = vm_m4x4_lookAt(shadow_light_position, vm_v3_zero, vm_v3_up);
-            m4x4 shadow_pv = vm_m4x4_mul(shadow_projection, shadow_view);
-
-            glUniformMatrix4fv(ctx.shadow_uniform_pv, 1, GL_FALSE, shadow_pv.e);
+            shadow_pv = vm_m4x4_mul(shadow_projection, shadow_view);
         }
     }
 
@@ -842,17 +904,20 @@ BENEATH_API beneath_bool beneath_opengl_draw(
     /* Shadow Map Render Pass */
     if (draw_call->shadow)
     {
-        glViewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
+        glCullFace(GL_FRONT);
         glBindFramebuffer(GL_FRAMEBUFFER, ctx.shadow_fbo);
+        glViewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
         glClear(GL_DEPTH_BUFFER_BIT);
-        glUseProgram(ctx.shadow_program);
 
+        glUseProgram(ctx.shadow_program);
+        glUniformMatrix4fv(ctx.shadow_uniform_pv, 1, GL_FALSE, shadow_pv.e);
         glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
         glDrawElementsInstanced(GL_TRIANGLES, (int)mesh->indices_count, GL_UNSIGNED_INT, 0, (int)draw_call->models_count);
         glBindVertexArray(0);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, (int)state->window_width, (int)state->window_height);
+        glCullFace(GL_BACK);
     }
 
     if (draw_call->pixelize)
@@ -873,7 +938,12 @@ BENEATH_API beneath_bool beneath_opengl_draw(
 
         glUseProgram(shader_active.program_id);
         glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, ctx.shadow_texture_depth);
+        glUniform1i(glGetUniformLocation(shader_active.program_id, "shadow_map"), 1);
         glUniformMatrix4fv(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_PROJECTION_VIEW], 1, GL_FALSE, projection_view);
+        glUniformMatrix4fv(glGetUniformLocation(shader_active.program_id, "light_space_matrix"), 1, GL_FALSE, shadow_pv.e);
         glUniform3f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_CAMERA_POSITION], camera_position[0], camera_position[1], camera_position[2]);
 
         if (draw_call->changed)
