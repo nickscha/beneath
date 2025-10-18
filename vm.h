@@ -1200,6 +1200,27 @@ VM_API VM_INLINE m4x4 vm_m4x4_mul(m4x4 a, m4x4 b)
 #endif
 }
 
+VM_API VM_INLINE v4 vm_m4x4_mul_v4(m4x4 m, v4 v)
+{
+#ifdef VM_M4X4_ROW_MAJOR_ORDER
+    v4 r;
+    r.x = m.e[VM_M4X4_AT(0,0)] * v.x + m.e[VM_M4X4_AT(0,1)] * v.y + m.e[VM_M4X4_AT(0,2)] * v.z + m.e[VM_M4X4_AT(0,3)] * v.w;
+    r.y = m.e[VM_M4X4_AT(1,0)] * v.x + m.e[VM_M4X4_AT(1,1)] * v.y + m.e[VM_M4X4_AT(1,2)] * v.z + m.e[VM_M4X4_AT(1,3)] * v.w;
+    r.z = m.e[VM_M4X4_AT(2,0)] * v.x + m.e[VM_M4X4_AT(2,1)] * v.y + m.e[VM_M4X4_AT(2,2)] * v.z + m.e[VM_M4X4_AT(2,3)] * v.w;
+    r.w = m.e[VM_M4X4_AT(3,0)] * v.x + m.e[VM_M4X4_AT(3,1)] * v.y + m.e[VM_M4X4_AT(3,2)] * v.z + m.e[VM_M4X4_AT(3,3)] * v.w;
+    return r;
+#else
+    /* column-major (OpenGL) */
+    v4 r;
+    r.x = m.e[VM_M4X4_AT(0,0)] * v.x + m.e[VM_M4X4_AT(0,1)] * v.y + m.e[VM_M4X4_AT(0,2)] * v.z + m.e[VM_M4X4_AT(0,3)] * v.w;
+    r.y = m.e[VM_M4X4_AT(1,0)] * v.x + m.e[VM_M4X4_AT(1,1)] * v.y + m.e[VM_M4X4_AT(1,2)] * v.z + m.e[VM_M4X4_AT(1,3)] * v.w;
+    r.z = m.e[VM_M4X4_AT(2,0)] * v.x + m.e[VM_M4X4_AT(2,1)] * v.y + m.e[VM_M4X4_AT(2,2)] * v.z + m.e[VM_M4X4_AT(2,3)] * v.w;
+    r.w = m.e[VM_M4X4_AT(3,0)] * v.x + m.e[VM_M4X4_AT(3,1)] * v.y + m.e[VM_M4X4_AT(3,2)] * v.z + m.e[VM_M4X4_AT(3,3)] * v.w;
+    return r;
+#endif
+}
+
+
 VM_API VM_INLINE int vm_m4x4_equals(m4x4 a, m4x4 b)
 {
 #ifdef VM_USE_SSE

@@ -82,7 +82,7 @@ static char beneath_opengl_shader_volumetric_fragment[] = {
     "out vec4 FragColor;\n"
     "\n"
     "uniform sampler2D screen_texture;\n"
-    "uniform vec3 light_dir;\n"
+    "uniform vec2 light_pos;\n"
     "uniform float scattering;  // intensity of light shafts (0.1–1.0)\n"
     "uniform float exposure;    // brightness scale (0.5–2.0)\n"
     "\n"
@@ -90,12 +90,10 @@ static char beneath_opengl_shader_volumetric_fragment[] = {
     "    vec3 base = texture(screen_texture, vUV).rgb;\n"
     "\n"
     "    // === Screen-space light position (for directional light, pick near top-center) ===\n"
-    "    vec2 lightPos = vec2(0.5, 0.8); // move this depending on your light_dir\n"
-    "\n"
-    "    // === Ray from pixel toward light source ===\n"
-    "    vec2 delta = lightPos - vUV;\n"
-    "    float dist = length(delta);\n"
-    "    vec2 stepv = delta / 64.0;   // number of samples\n"
+    "  vec2 lightPos = light_pos; \n"
+    "  vec2 delta = lightPos - vUV; \n"
+    "  float dist = length(delta); \n"
+    "  vec2 stepv = delta / 64.0; \n"
     "\n"
     "    // === Parameters controlling ray decay ===\n"
     "    float decay = 0.97;\n"
@@ -231,7 +229,7 @@ typedef struct beneath_opengl_context
     unsigned int volumetric_program;
     int volumetric_uniform_screen_texture;
     int volumetric_uniform_shadow_map;
-    int volumetric_uniform_light_dir;
+    int volumetric_uniform_light_pos;
     int volumetric_uniform_camera_pos;
     int volumetric_uniform_scattering;
     int volumetric_uniform_exposure;
@@ -847,7 +845,7 @@ BENEATH_API beneath_bool beneath_opengl_draw(
 
             ctx.volumetric_uniform_screen_texture = glGetUniformLocation(ctx.volumetric_program, "screen_texture");
             ctx.volumetric_uniform_shadow_map = glGetUniformLocation(ctx.volumetric_program, "shadow_map");
-            ctx.volumetric_uniform_light_dir = glGetUniformLocation(ctx.volumetric_program, "light_dir");
+            ctx.volumetric_uniform_light_pos = glGetUniformLocation(ctx.volumetric_program, "ligth_pos");
             ctx.volumetric_uniform_camera_pos = glGetUniformLocation(ctx.volumetric_program, "camera_pos");
             ctx.volumetric_uniform_scattering = glGetUniformLocation(ctx.volumetric_program, "scattering");
             ctx.volumetric_uniform_exposure = glGetUniformLocation(ctx.volumetric_program, "exposure");
@@ -902,7 +900,18 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             glReadBuffer(GL_NONE);
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-            v3 shadow_light_position = vm_v3(-5.0f, 7.0f, 4.0f);
+            v3 light_direction = vm_v3_normalize(vm_v3(
+                draw_call->lightning->directional.direction[0],
+                draw_call->lightning->directional.direction[1],
+                draw_call->lightning->directional.direction[2]
+            ));
+
+            v3 center = vm_v3_zero;
+            float distance = 10.0f;
+
+            v3 shadow_light_position = vm_v3_sub(center, vm_v3_mulf(light_direction, distance));
+
+            /*v3 shadow_light_position = vm_v3(-5.0f, 7.0f, 4.0f);*/
             m4x4 shadow_projection = vm_m4x4_orthographic(-10.0f, 10.0f, -10.0f, 10.0f, 1.0f, 50.0f);
             m4x4 shadow_view = vm_m4x4_lookAt(shadow_light_position, vm_v3_zero, vm_v3_up);
             shadow_pv = vm_m4x4_mul(shadow_projection, shadow_view);
@@ -1076,6 +1085,31 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         }
         else if (draw_call->volumetric)
         {
+            int i;
+            v3 shadow_light_position = vm_v3(-5.0f, 7.0f, 4.0f);
+            v4 world_light = vm_v4(shadow_light_position.x,
+                                   shadow_light_position.y,
+                                   shadow_light_position.z,
+                                   1.0f);
+
+            m4x4 camera_view_projection;
+
+            for (i = 0; i < 16; ++i)
+            {
+                camera_view_projection.e[i] = projection_view[i];
+            }
+
+            v4 clip = vm_m4x4_mul_v4(camera_view_projection, world_light);
+
+            // Perspective divide
+            clip.x /= clip.w;
+            clip.y /= clip.w;
+
+            // Convert to [0..1] screen space
+            float light_x = clip.x * 0.5f + 0.5f;
+            float light_y = clip.y * 0.5f + 0.5f;
+            glUniform2f(ctx.volumetric_uniform_light_pos, light_x, light_y);
+
             /* Use volumetric program */
             glUseProgram(ctx.volumetric_program);
             glBindVertexArray(ctx.fbo_screen_vao);
@@ -1088,7 +1122,8 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             glBindTexture(GL_TEXTURE_2D, ctx.shadow_texture_depth);
             glUniform1i(ctx.volumetric_uniform_shadow_map, 1);
 
-            glUniform3f(ctx.volumetric_uniform_light_dir, draw_call->lightning->directional.direction[0], draw_call->lightning->directional.direction[1], draw_call->lightning->directional.direction[2]);
+            glUniform2f(ctx.volumetric_uniform_light_pos, light_x, light_y);
+
             glUniform3f(ctx.volumetric_uniform_camera_pos, camera_position[0], camera_position[1], camera_position[2]);
 
             /*
