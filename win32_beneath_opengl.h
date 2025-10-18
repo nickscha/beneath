@@ -83,21 +83,36 @@ static char beneath_opengl_shader_volumetric_fragment[] = {
     "\n"
     "uniform sampler2D screen_texture;\n"
     "uniform vec3 light_dir;\n"
-    "uniform float scattering;  // e.g. 0.02–0.15\n"
-    "uniform float exposure;    // e.g. 1.0–2.0\n"
+    "uniform float scattering;  // intensity of light shafts (0.1–1.0)\n"
+    "uniform float exposure;    // brightness scale (0.5–2.0)\n"
     "\n"
     "void main() {\n"
     "    vec3 base = texture(screen_texture, vUV).rgb;\n"
     "\n"
-    "    // Simulated distance from camera: use vUV.y (bottom = near, top = far)\n"
-    "    float depth = 1.0 - vUV.y;\n"
-    "    float fogAmount = 1.0 - exp(-depth * scattering * 10.0);\n"
+    "    // === Screen-space light position (for directional light, pick near top-center) ===\n"
+    "    vec2 lightPos = vec2(0.5, 0.8); // move this depending on your light_dir\n"
     "\n"
-    "    // Simple directional tint from light direction\n"
-    "    float lightInfluence = max(dot(normalize(-light_dir), vec3(0.0, 0.0, 1.0)), 0.0);\n"
-    "    vec3 fogColor = vec3(1.0, 0.95, 0.8) * lightInfluence * exposure;\n"
+    "    // === Ray from pixel toward light source ===\n"
+    "    vec2 delta = lightPos - vUV;\n"
+    "    float dist = length(delta);\n"
+    "    vec2 stepv = delta / 64.0;   // number of samples\n"
     "\n"
-    "    vec3 color = mix(base, fogColor, fogAmount);\n"
+    "    // === Parameters controlling ray decay ===\n"
+    "    float decay = 0.97;\n"
+    "    float illumination = 0.0;\n"
+    "    float weight = 0.8;\n"
+    "    vec2 coord = vUV;\n"
+    "\n"
+    "    for (int i = 0; i < 64; i++) {\n"
+    "        coord += stepv;\n"
+    "        float sample = texture(screen_texture, coord).r; // brightness sample\n"
+    "        illumination += sample * weight;\n"
+    "        weight *= decay;\n"
+    "    }\n"
+    "\n"
+    "    // === Combine rays with base scene ===\n"
+    "    vec3 shafts = vec3(illumination) * scattering * exposure;\n"
+    "    vec3 color = base + shafts;\n"
     "    FragColor = vec4(color, 1.0);\n"
     "}\n"};
 
@@ -1080,8 +1095,8 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             glUniform1f(ctx.volumetric_uniform_scattering, 0.08f);
             glUniform1f(ctx.volumetric_uniform_exposure, 1.5f);
 */
-            glUniform1f(ctx.volumetric_uniform_scattering, 0.15f);
-            glUniform1f(ctx.volumetric_uniform_exposure, 2.0f);
+            glUniform1f(ctx.volumetric_uniform_scattering, 0.04f);
+            glUniform1f(ctx.volumetric_uniform_exposure, 1.0f);
 
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         }
