@@ -237,6 +237,7 @@ void beneath_update(
 
     draw_call.pixelize = input->keys[BENEATH_KEY_F1].active;
     draw_call.shadow = true;
+    draw_call.volumetric = true;
 
     /* Print FPS */
     if (input->keys[BENEATH_KEY_F2].pressed)
