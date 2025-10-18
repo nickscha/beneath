@@ -28,7 +28,7 @@ static char beneath_opengl_shader_shadow_fragment[] = {
     "  /* Only writes depth automatically */ \n"
     "}                                       \n"};
 
-static char beneath_opengl_shader_pixel_vertex[] = {
+static char beneath_opengl_shader_post_process_base_vertex[] = {
     "#version 330 core                       \n"
     "layout (location = 0) in vec2 aPos;     \n"
     "layout (location = 1) in vec2 aUV;      \n"
@@ -37,6 +37,16 @@ static char beneath_opengl_shader_pixel_vertex[] = {
     "    vUV = aUV;                          \n"
     "    gl_Position = vec4(aPos, 0.0, 1.0); \n"
     "}                                       \n"};
+
+static char beneath_opengl_shader_post_process_base_fragment[] = {
+    "#version 330 core                        \n"
+    "in vec2 vUV;                             \n"
+    "out vec4 FragColor;                      \n"
+    "uniform sampler2D screen_texture;        \n"
+    "void main() {                            \n"
+    "    vec3 color = texture(screen_texture, vUV).rgb;\n"
+    "    FragColor = vec4(color, 1.0);\n"
+    "}                                        \n"};
 
 static char beneath_opengl_shader_pixel_fragment[] = {
     "#version 330 core                        \n"
@@ -62,7 +72,7 @@ static char beneath_opengl_shader_pixel_fragment[] = {
     "    edge = clamp(edge * 0.5, 0.0, 1.0); // tweak strength\n"
     "\n"
     "    // --- Combine quantized color and edge ---\n"
-    "     vec3 edge_color = vec3(0.2, 0.2, 0.2);\n"
+    "    vec3 edge_color = vec3(0.2, 0.2, 0.2);\n"
     "    FragColor = vec4(mix(quantized, edge_color, edge), 1.0);\n"
     "}                                        \n"};
 
@@ -152,29 +162,101 @@ typedef struct beneath_opengl_context
     unsigned int shaders_previous_index;
     unsigned int shaders_active_index;
 
-    /* Pixelation FBO */
-    unsigned int fbo;
-    unsigned int fbo_color;
-    unsigned int fbo_depth;
-    unsigned int fbo_vao;
-    unsigned int fbo_vbo;
-    unsigned int blit_program;
-    int blit_tex_uniform;
-    int blit_texel_uniform;
-    int fbo_width;
-    int fbo_height;
+    /* Screen FBO */
+    unsigned int fbo_screen;
+    unsigned int fbo_screen_color;
+    unsigned int fbo_screen_depth;
+    unsigned int fbo_screen_vao;
+    unsigned int fbo_screen_vbo;
+    int fbo_screen_width;
+    int fbo_screen_height;
 
+    /* Shadow Shader */
     unsigned int shadow_program;
     int shadow_uniform_pv;
     unsigned int shadow_texture_depth;
     m4x4 shadow_uniform_pv_data;
     unsigned int shadow_fbo;
 
+    /* Post processing starts here */
+    unsigned int post_process_base_program;
+    int post_process_base_uniform_screen_texture;
+
+    /* Pixelation Shader */
+    unsigned int blit_program;
+    int blit_tex_uniform;
+    int blit_texel_uniform;
+
 } beneath_opengl_context;
 
 /******************************/
 /* Shader Functions           */
 /******************************/
+
+BENEATH_API int beneath_opengl_shader_compile(char *shaderCode, unsigned int shaderType, beneath_api_io_print print)
+{
+    unsigned int shaderId = glCreateShader(shaderType);
+    glShaderSource(shaderId, 1, &shaderCode, NULL);
+    glCompileShader(shaderId);
+
+    int success;
+    glGetShaderiv(shaderId, GL_COMPILE_STATUS, &success);
+
+    if (!success)
+    {
+        char infoLog[1024];
+        glGetShaderInfoLog(shaderId, 1024, NULL, infoLog);
+        print(__FILE__, __LINE__, infoLog);
+        return -1;
+    }
+
+    return (int)shaderId;
+}
+
+BENEATH_API beneath_bool beneath_opengl_shader_create(unsigned int *shader_program, char *shader_vertex_code, char *shader_fragment_code, beneath_api_io_print print)
+{
+    int vertex_shader_id;
+    int fragment_shader_id;
+    int success;
+
+    vertex_shader_id = beneath_opengl_shader_compile(shader_vertex_code, GL_VERTEX_SHADER, print);
+
+    if (vertex_shader_id == -1)
+    {
+        print(__FILE__, __LINE__, "[opengl] vertex shader compilation failed!\n");
+        return false;
+    }
+
+    fragment_shader_id = beneath_opengl_shader_compile(shader_fragment_code, GL_FRAGMENT_SHADER, print);
+
+    if (vertex_shader_id == -1)
+    {
+        print(__FILE__, __LINE__, "[opengl] fragment shader compilation failed!\n");
+        return false;
+    }
+
+    *shader_program = glCreateProgram();
+    glAttachShader(*shader_program, (unsigned int)vertex_shader_id);
+    glAttachShader(*shader_program, (unsigned int)fragment_shader_id);
+    glLinkProgram(*shader_program);
+    glGetProgramiv(*shader_program, GL_LINK_STATUS, &success);
+    glDeleteShader((unsigned int)vertex_shader_id);
+    glDeleteShader((unsigned int)fragment_shader_id);
+
+    if (!success)
+    {
+        char infoLog[1024];
+        glGetProgramInfoLog(*shader_program, 1024, NULL, infoLog);
+
+        print(__FILE__, __LINE__, "[opengl] shader linking failed!\n");
+        print(__FILE__, __LINE__, infoLog);
+
+        return false;
+    }
+
+    return true;
+}
+
 BENEATH_API beneath_bool beneath_opengl_shader_generate(
     beneath_draw_call *draw_call,
     char *vertex_shader_code_buffer,
@@ -238,44 +320,45 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
 
     if (draw_call->shadow)
     {
-        sb_append_cstr(&fc,
-                       "float rand(vec2 co)\n"
-                       "{\n"
-                       "    return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);\n"
-                       "}\n"
-                       "\n"
-                       "float ShadowCalculation(vec4 frag_pos_light_space, vec3 normal, vec3 light_dir)\n"
-                       "{\n"
-                       "    // Transform to [0,1] range\n"
-                       "    vec3 proj_coords = frag_pos_light_space.xyz / frag_pos_light_space.w;\n"
-                       "    proj_coords = proj_coords * 0.5 + 0.5;\n"
-                       "\n"
-                       "    if (proj_coords.z > 1.0)\n"
-                       "        return 0.0;\n"
-                       "\n"
-                       "    float bias = max(0.005 * (1.0 - dot(normalize(normal), normalize(-light_dir))), 0.001);\n"
-                       "\n"
-                       "    float shadow = 0.0;\n"
-                       "    vec2 texel_size = 1.0 / textureSize(shadow_map, 0);\n"
-                       "\n"
-                       "    // Generate a pseudo-random rotation per fragment\n"
-                       "    float angle = rand(proj_coords.xy) * 6.2831853; // 0..2PI\n"
-                       "    mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));\n"
-                       "\n"
-                       "    // 3x3 PCF kernel with randomized rotation\n"
-                       "    for (int x = -1; x <= 1; ++x)\n"
-                       "    {\n"
-                       "        for (int y = -1; y <= 1; ++y)\n"
-                       "        {\n"
-                       "            vec2 offset = rot * vec2(x, y) * texel_size;\n"
-                       "            float pcf_depth = texture(shadow_map, proj_coords.xy + offset).r;\n"
-                       "            shadow += (proj_coords.z - bias > pcf_depth ? 1.0 : 0.0);\n"
-                       "        }\n"
-                       "    }\n"
-                       "\n"
-                       "    shadow /= 9.0;\n"
-                       "    return shadow;\n"
-                       "}\n\n");
+        sb_append_cstr(
+            &fc,
+            "float rand(vec2 co)\n"
+            "{\n"
+            "    return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);\n"
+            "}\n"
+            "\n"
+            "float ShadowCalculation(vec4 frag_pos_light_space, vec3 normal, vec3 light_dir)\n"
+            "{\n"
+            "    // Transform to [0,1] range\n"
+            "    vec3 proj_coords = frag_pos_light_space.xyz / frag_pos_light_space.w;\n"
+            "    proj_coords = proj_coords * 0.5 + 0.5;\n"
+            "\n"
+            "    if (proj_coords.z > 1.0)\n"
+            "        return 0.0;\n"
+            "\n"
+            "    float bias = max(0.005 * (1.0 - dot(normalize(normal), normalize(-light_dir))), 0.001);\n"
+            "\n"
+            "    float shadow = 0.0;\n"
+            "    vec2 texel_size = 1.0 / textureSize(shadow_map, 0);\n"
+            "\n"
+            "    // Generate a pseudo-random rotation per fragment\n"
+            "    float angle = rand(proj_coords.xy) * 6.2831853; // 0..2PI\n"
+            "    mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));\n"
+            "\n"
+            "    // 3x3 PCF kernel with randomized rotation\n"
+            "    for (int x = -1; x <= 1; ++x)\n"
+            "    {\n"
+            "        for (int y = -1; y <= 1; ++y)\n"
+            "        {\n"
+            "            vec2 offset = rot * vec2(x, y) * texel_size;\n"
+            "            float pcf_depth = texture(shadow_map, proj_coords.xy + offset).r;\n"
+            "            shadow += (proj_coords.z - bias > pcf_depth ? 1.0 : 0.0);\n"
+            "        }\n"
+            "    }\n"
+            "\n"
+            "    shadow /= 9.0;\n"
+            "    return shadow;\n"
+            "}\n\n");
     }
 
     if (draw_call->lightning)
@@ -309,6 +392,7 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
         sb_append_cstr(&fc, "    return ambient + (1.0 - shadow) * (diffuse + specular);                   \n");
         sb_append_cstr(&fc, "}                                                                             \n");
         sb_append_cstr(&fc, "\n");
+
         sb_append_cstr(&fc, "out vec4 FragColor;\n\n");
         sb_append_cstr(&fc, "void main()                                                          \n");
         sb_append_cstr(&fc, "{                                                                    \n");
@@ -460,26 +544,6 @@ BENEATH_API beneath_bool beneath_opengl_shader_generate(
     return true;
 }
 
-BENEATH_API int beneath_opengl_shader_compile(char *shaderCode, unsigned int shaderType, beneath_api_io_print print)
-{
-    unsigned int shaderId = glCreateShader(shaderType);
-    glShaderSource(shaderId, 1, &shaderCode, NULL);
-    glCompileShader(shaderId);
-
-    int success;
-    glGetShaderiv(shaderId, GL_COMPILE_STATUS, &success);
-
-    if (!success)
-    {
-        char infoLog[1024];
-        glGetShaderInfoLog(shaderId, 1024, NULL, infoLog);
-        print(__FILE__, __LINE__, infoLog);
-        return -1;
-    }
-
-    return (int)shaderId;
-}
-
 BENEATH_API beneath_bool beneath_opengl_shader_load(
     beneath_opengl_context *ctx,
     beneath_draw_call *draw_call,
@@ -515,40 +579,13 @@ BENEATH_API beneath_bool beneath_opengl_shader_load(
         return false;
     }
 
-    /* Compile shader */
-    int vertex_shader_id = beneath_opengl_shader_compile(shader.code_vertex, GL_VERTEX_SHADER, print);
-    int fragment_shader_id = beneath_opengl_shader_compile(shader.code_fragment, GL_FRAGMENT_SHADER, print);
-
-    if (vertex_shader_id == -1 || fragment_shader_id == -1)
+    if (!beneath_opengl_shader_create(&shader.program_id, shader.code_vertex, shader.code_fragment, print))
     {
         return false;
     }
 
-    /* Load shader */
-    {
-        int success;
-
-        shader.program_id = glCreateProgram();
-        glAttachShader(shader.program_id, (unsigned int)vertex_shader_id);
-        glAttachShader(shader.program_id, (unsigned int)fragment_shader_id);
-        glLinkProgram(shader.program_id);
-        glGetProgramiv(shader.program_id, GL_LINK_STATUS, &success);
-        glDeleteShader((unsigned int)vertex_shader_id);
-        glDeleteShader((unsigned int)fragment_shader_id);
-
-        if (!success)
-        {
-            char infoLog[1024];
-            glGetProgramInfoLog(shader.program_id, 1024, NULL, infoLog);
-            print(__FILE__, __LINE__, infoLog);
-            return false;
-        }
-    }
-
     /* Load shader uniform locations */
     {
-        glUseProgram(shader.program_id);
-
         unsigned int i;
         for (i = 0; i < BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_COUNT; ++i)
         {
@@ -567,28 +604,28 @@ BENEATH_API beneath_bool beneath_opengl_shader_load(
 /******************************/
 /* Pixelation Functions       */
 /******************************/
-BENEATH_API beneath_bool beneath_opengl_framebuffer_initialize(beneath_opengl_context *ctx, beneath_api_io_print print, int fbo_width, int fbo_height)
+BENEATH_API beneath_bool beneath_opengl_framebuffer_screen_initialize(beneath_opengl_context *ctx, beneath_api_io_print print, int fbo_width, int fbo_height)
 {
     /* --- Pixelation setup --- */
-    ctx->fbo_width = fbo_width;   /* low-res target width */
-    ctx->fbo_height = fbo_height; /* low-res target height */
+    ctx->fbo_screen_width = fbo_width;   /* low-res target width */
+    ctx->fbo_screen_height = fbo_height; /* low-res target height */
 
-    glGenFramebuffers(1, &ctx->fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo);
+    glGenFramebuffers(1, &ctx->fbo_screen);
+    glBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo_screen);
 
     /* Color texture */
-    glGenTextures(1, &ctx->fbo_color);
-    glBindTexture(GL_TEXTURE_2D, ctx->fbo_color);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ctx->fbo_width, ctx->fbo_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glGenTextures(1, &ctx->fbo_screen_color);
+    glBindTexture(GL_TEXTURE_2D, ctx->fbo_screen_color);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ctx->fbo_screen_width, ctx->fbo_screen_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->fbo_color, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->fbo_screen_color, 0);
 
     /* Depth buffer */
-    glGenRenderbuffers(1, &ctx->fbo_depth);
-    glBindRenderbuffer(GL_RENDERBUFFER, ctx->fbo_depth);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, ctx->fbo_width, ctx->fbo_height);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ctx->fbo_depth);
+    glGenRenderbuffers(1, &ctx->fbo_screen_depth);
+    glBindRenderbuffer(GL_RENDERBUFFER, ctx->fbo_screen_depth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, ctx->fbo_screen_width, ctx->fbo_screen_height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ctx->fbo_screen_depth);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
     {
@@ -596,60 +633,6 @@ BENEATH_API beneath_bool beneath_opengl_framebuffer_initialize(beneath_opengl_co
         return false;
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    return true;
-}
-
-BENEATH_API beneath_bool beneath_opengl_shader_program_load(unsigned int *shader_program, int vertex_shader_id, int fragment_shader_id, beneath_api_io_print print)
-{
-    int success;
-
-    *shader_program = glCreateProgram();
-    glAttachShader(*shader_program, (unsigned int)vertex_shader_id);
-    glAttachShader(*shader_program, (unsigned int)fragment_shader_id);
-    glLinkProgram(*shader_program);
-    glGetProgramiv(*shader_program, GL_LINK_STATUS, &success);
-    glDeleteShader((unsigned int)vertex_shader_id);
-    glDeleteShader((unsigned int)fragment_shader_id);
-
-    if (!success)
-    {
-        char infoLog[1024];
-        glGetProgramInfoLog(*shader_program, 1024, NULL, infoLog);
-        print(__FILE__, __LINE__, infoLog);
-        return false;
-    }
-
-    return true;
-}
-
-BENEATH_API beneath_bool beneath_opengl_framebuffer_shader_load(beneath_opengl_context *ctx, beneath_api_io_print print)
-{
-    int vertex_shader_id = beneath_opengl_shader_compile(beneath_opengl_shader_pixel_vertex, GL_VERTEX_SHADER, print);
-    int fragment_shader_id = beneath_opengl_shader_compile(beneath_opengl_shader_pixel_fragment, GL_FRAGMENT_SHADER, print);
-
-    if (!beneath_opengl_shader_program_load(&ctx->blit_program, vertex_shader_id, fragment_shader_id, print))
-    {
-        return false;
-    }
-
-    ctx->blit_tex_uniform = glGetUniformLocation(ctx->blit_program, "screen_texture");
-    ctx->blit_texel_uniform = glGetUniformLocation(ctx->blit_program, "texel_size");
-
-    return true;
-}
-
-BENEATH_API BENEATH_INLINE beneath_bool beneath_opengl_shader_shadow_load(beneath_opengl_context *ctx, beneath_api_io_print print)
-{
-    int vertex_shader_id = beneath_opengl_shader_compile(beneath_opengl_shader_shadow_vertex, GL_VERTEX_SHADER, print);
-    int fragment_shader_id = beneath_opengl_shader_compile(beneath_opengl_shader_shadow_fragment, GL_FRAGMENT_SHADER, print);
-
-    if (!beneath_opengl_shader_program_load(&ctx->shadow_program, vertex_shader_id, fragment_shader_id, print))
-    {
-        return false;
-    }
-
-    ctx->shadow_uniform_pv = glGetUniformLocation(ctx->shadow_program, "pv");
 
     return true;
 }
@@ -741,31 +724,25 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             return false;
         }
 
-        /*
+        /**/
         print(__FILE__, __LINE__, "Vertex Shader Code:\n");
         print(__FILE__, __LINE__, ctx.shaders[ctx.shaders_active_index].code_vertex);
         print(__FILE__, __LINE__, "Fragment Shader Code:\n");
         print(__FILE__, __LINE__, ctx.shaders[ctx.shaders_active_index].code_fragment);
-*/
 
         glGenVertexArrays(BENEATH_OPENGL_MESHES_MAX, ctx.storage_vertex_array);
         glGenBuffers(BENEATH_OPENGL_MESHES_MAX * BENEATH_OPENGL_SHADER_LAYOUT_COUNT, ctx.storage_buffer_object);
 
         ctx.initialized = true;
 
-        /* Pixel */
+        /* Setup Screen Framebuffer and VAO,VBO */
         {
-            if (!beneath_opengl_framebuffer_shader_load(&ctx, print))
+            if (!beneath_opengl_framebuffer_screen_initialize(
+                    &ctx, print,
+                    (int)(draw_call->pixelize ? 300 : state->window_width),
+                    (int)(draw_call->pixelize ? 200 : state->window_height)))
             {
-                print(__FILE__, __LINE__, "cannot compile framebuffer shaders !!!\n");
-                return false;
-            }
-            /*
-                        if (!beneath_opengl_framebuffer_initialize(&ctx, print, (int)state->window_width / 2, (int)state->window_height / 2))
-              */
-            if (!beneath_opengl_framebuffer_initialize(&ctx, print, (int)300, (int)200))
-            {
-                print(__FILE__, __LINE__, "cannot initialize framebuffers!!!\n");
+                print(__FILE__, __LINE__, "cannot initialize screen framebuffers!!!\n");
                 return false;
             }
 
@@ -776,17 +753,50 @@ BENEATH_API beneath_bool beneath_opengl_draw(
                 -1.0f, 1.0f, 0.0f, 1.0f,
                 1.0f, 1.0f, 1.0f, 1.0f};
 
-            glGenVertexArrays(1, &ctx.fbo_vao);
-            glGenBuffers(1, &ctx.fbo_vbo);
+            glGenVertexArrays(1, &ctx.fbo_screen_vao);
+            glGenBuffers(1, &ctx.fbo_screen_vbo);
 
-            glBindVertexArray(ctx.fbo_vao);
-            glBindBuffer(GL_ARRAY_BUFFER, ctx.fbo_vbo);
+            glBindVertexArray(ctx.fbo_screen_vao);
+            glBindBuffer(GL_ARRAY_BUFFER, ctx.fbo_screen_vbo);
             glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
 
             glEnableVertexAttribArray(0);
             glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
             glEnableVertexAttribArray(1);
             glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)(2 * sizeof(float)));
+
+            glBindVertexArray(0);
+        }
+
+        /* Post processing shader */
+        {
+            if (!beneath_opengl_shader_create(
+                    &ctx.post_process_base_program,
+                    beneath_opengl_shader_post_process_base_vertex,
+                    beneath_opengl_shader_post_process_base_fragment,
+                    print))
+            {
+                print(__FILE__, __LINE__, "cannot compile post processing shader !!!\n");
+                return false;
+            }
+
+            ctx.post_process_base_uniform_screen_texture = glGetUniformLocation(ctx.shadow_program, "screen_texture");
+        }
+
+        /* Pixel */
+        {
+            if (!beneath_opengl_shader_create(
+                    &ctx.blit_program,
+                    beneath_opengl_shader_post_process_base_vertex,
+                    beneath_opengl_shader_pixel_fragment,
+                    print))
+            {
+                print(__FILE__, __LINE__, "cannot compile pixel shaders !!!\n");
+                return false;
+            }
+
+            ctx.blit_tex_uniform = glGetUniformLocation(ctx.blit_program, "screen_texture");
+            ctx.blit_texel_uniform = glGetUniformLocation(ctx.blit_program, "texel_size");
         }
 
         /* Shadow Map */
@@ -794,11 +804,17 @@ BENEATH_API beneath_bool beneath_opengl_draw(
 #define SHADOW_SIZE 1024
             float border_color[] = {1.0, 1.0, 1.0, 1.0};
 
-            if (!beneath_opengl_shader_shadow_load(&ctx, print))
+            if (!beneath_opengl_shader_create(
+                    &ctx.shadow_program,
+                    beneath_opengl_shader_shadow_vertex,
+                    beneath_opengl_shader_shadow_fragment,
+                    print))
             {
                 print(__FILE__, __LINE__, "cannot compile shadow shaders !!!\n");
                 return false;
             }
+
+            ctx.shadow_uniform_pv = glGetUniformLocation(ctx.shadow_program, "pv");
 
             glGenTextures(1, &ctx.shadow_texture_depth);
             glBindTexture(GL_TEXTURE_2D, ctx.shadow_texture_depth);
@@ -908,7 +924,7 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         glBindVertexArray(0);
     }
 
-    /* Shadow Map Render Pass */
+    /* (1) Shadow Map Render Pass */
     if (draw_call->shadow)
     {
         glCullFace(GL_FRONT);
@@ -927,22 +943,14 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         glCullFace(GL_BACK);
     }
 
-    if (draw_call->pixelize)
+    /* Post processing enabled. Render to fbo_screen */
+    if (draw_call->pixelize || draw_call->volumetric)
     {
-        glBindFramebuffer(GL_FRAMEBUFFER, ctx.fbo);
-        glViewport(0, 0, ctx.fbo_width, ctx.fbo_height);
+        glBindFramebuffer(GL_FRAMEBUFFER, ctx.fbo_screen);
+        glViewport(0, 0, ctx.fbo_screen_width, ctx.fbo_screen_height);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
     {
-
-        /*
-        if (ctx.shaders_active_index != ctx.shaders_previous_index)
-        {
-
-            ctx.shaders_previous_index = ctx.shaders_active_index;
-        }
-        */
-
         glUseProgram(shader_active.program_id);
         glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
 
@@ -978,20 +986,34 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         glBindVertexArray(0);
     }
 
-    if (draw_call->pixelize)
+    /* --- Post-processing --- */
+    if (draw_call->pixelize || draw_call->volumetric)
     {
-        /* --- Post-process pixelated upscale --- */
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, (int)state->window_width, (int)state->window_height);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(ctx.blit_program);
-        glBindVertexArray(ctx.fbo_vao);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, ctx.fbo_color);
-        glUniform1i(ctx.blit_tex_uniform, 0);
-        glUniform2f(ctx.blit_texel_uniform, 1.0f / (float)ctx.fbo_width, 1.0f / (float)ctx.fbo_height);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        if (!draw_call->pixelize)
+        {
+            /* Use base post processing shader */
+            glUseProgram(ctx.post_process_base_program);
+            glBindVertexArray(ctx.fbo_screen_vao);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color);
+            glUniform1i(ctx.post_process_base_uniform_screen_texture, 0);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        }
+        else
+        {
+            /* Use the pixel shader program */
+            glUseProgram(ctx.blit_program);
+            glBindVertexArray(ctx.fbo_screen_vao);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color);
+            glUniform1i(ctx.blit_tex_uniform, 0);
+            glUniform2f(ctx.blit_texel_uniform, 1.0f / (float)ctx.fbo_screen_width, 1.0f / (float)ctx.fbo_screen_height);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        }
     }
 
     draw_call->changed = false;
