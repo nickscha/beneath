@@ -76,6 +76,31 @@ static char beneath_opengl_shader_pixel_fragment[] = {
     "    FragColor = vec4(mix(quantized, edge_color, edge), 1.0);\n"
     "}                                        \n"};
 
+static char beneath_opengl_shader_volumetric_fragment[] = {
+    "#version 330 core\n"
+    "in vec2 vUV;\n"
+    "out vec4 FragColor;\n"
+    "\n"
+    "uniform sampler2D screen_texture;\n"
+    "uniform vec3 light_dir;\n"
+    "uniform float scattering;  // e.g. 0.02–0.15\n"
+    "uniform float exposure;    // e.g. 1.0–2.0\n"
+    "\n"
+    "void main() {\n"
+    "    vec3 base = texture(screen_texture, vUV).rgb;\n"
+    "\n"
+    "    // Simulated distance from camera: use vUV.y (bottom = near, top = far)\n"
+    "    float depth = 1.0 - vUV.y;\n"
+    "    float fogAmount = 1.0 - exp(-depth * scattering * 10.0);\n"
+    "\n"
+    "    // Simple directional tint from light direction\n"
+    "    float lightInfluence = max(dot(normalize(-light_dir), vec3(0.0, 0.0, 1.0)), 0.0);\n"
+    "    vec3 fogColor = vec3(1.0, 0.95, 0.8) * lightInfluence * exposure;\n"
+    "\n"
+    "    vec3 color = mix(base, fogColor, fogAmount);\n"
+    "    FragColor = vec4(color, 1.0);\n"
+    "}\n"};
+
 /******************************/
 /* Types & Structs            */
 /******************************/
@@ -186,6 +211,15 @@ typedef struct beneath_opengl_context
     unsigned int blit_program;
     int blit_tex_uniform;
     int blit_texel_uniform;
+
+    /* Volumetric raymarch */
+    unsigned int volumetric_program;
+    int volumetric_uniform_screen_texture;
+    int volumetric_uniform_shadow_map;
+    int volumetric_uniform_light_dir;
+    int volumetric_uniform_camera_pos;
+    int volumetric_uniform_scattering;
+    int volumetric_uniform_exposure;
 
 } beneath_opengl_context;
 
@@ -724,11 +758,12 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             return false;
         }
 
-        /**/
+        /*
         print(__FILE__, __LINE__, "Vertex Shader Code:\n");
         print(__FILE__, __LINE__, ctx.shaders[ctx.shaders_active_index].code_vertex);
         print(__FILE__, __LINE__, "Fragment Shader Code:\n");
         print(__FILE__, __LINE__, ctx.shaders[ctx.shaders_active_index].code_fragment);
+        */
 
         glGenVertexArrays(BENEATH_OPENGL_MESHES_MAX, ctx.storage_vertex_array);
         glGenBuffers(BENEATH_OPENGL_MESHES_MAX * BENEATH_OPENGL_SHADER_LAYOUT_COUNT, ctx.storage_buffer_object);
@@ -781,6 +816,26 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             }
 
             ctx.post_process_base_uniform_screen_texture = glGetUniformLocation(ctx.shadow_program, "screen_texture");
+        }
+
+        /* Volumetric Shader */
+        {
+            if (!beneath_opengl_shader_create(
+                    &ctx.volumetric_program,
+                    beneath_opengl_shader_post_process_base_vertex,
+                    beneath_opengl_shader_volumetric_fragment,
+                    print))
+            {
+                print(__FILE__, __LINE__, "cannot compile volumetric shader !!!\n");
+                return false;
+            }
+
+            ctx.volumetric_uniform_screen_texture = glGetUniformLocation(ctx.volumetric_program, "screen_texture");
+            ctx.volumetric_uniform_shadow_map = glGetUniformLocation(ctx.volumetric_program, "shadow_map");
+            ctx.volumetric_uniform_light_dir = glGetUniformLocation(ctx.volumetric_program, "light_dir");
+            ctx.volumetric_uniform_camera_pos = glGetUniformLocation(ctx.volumetric_program, "camera_pos");
+            ctx.volumetric_uniform_scattering = glGetUniformLocation(ctx.volumetric_program, "scattering");
+            ctx.volumetric_uniform_exposure = glGetUniformLocation(ctx.volumetric_program, "exposure");
         }
 
         /* Pixel */
@@ -993,17 +1048,7 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         glViewport(0, 0, (int)state->window_width, (int)state->window_height);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        if (!draw_call->pixelize)
-        {
-            /* Use base post processing shader */
-            glUseProgram(ctx.post_process_base_program);
-            glBindVertexArray(ctx.fbo_screen_vao);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color);
-            glUniform1i(ctx.post_process_base_uniform_screen_texture, 0);
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        }
-        else
+        if (draw_call->pixelize)
         {
             /* Use the pixel shader program */
             glUseProgram(ctx.blit_program);
@@ -1012,6 +1057,42 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color);
             glUniform1i(ctx.blit_tex_uniform, 0);
             glUniform2f(ctx.blit_texel_uniform, 1.0f / (float)ctx.fbo_screen_width, 1.0f / (float)ctx.fbo_screen_height);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        }
+        else if (draw_call->volumetric)
+        {
+            /* Use volumetric program */
+            glUseProgram(ctx.volumetric_program);
+            glBindVertexArray(ctx.fbo_screen_vao);
+
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color);
+            glUniform1i(ctx.volumetric_uniform_screen_texture, 0);
+
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, ctx.shadow_texture_depth);
+            glUniform1i(ctx.volumetric_uniform_shadow_map, 1);
+
+            glUniform3f(ctx.volumetric_uniform_light_dir, draw_call->lightning->directional.direction[0], draw_call->lightning->directional.direction[1], draw_call->lightning->directional.direction[2]);
+            glUniform3f(ctx.volumetric_uniform_camera_pos, camera_position[0], camera_position[1], camera_position[2]);
+
+            /*
+            glUniform1f(ctx.volumetric_uniform_scattering, 0.08f);
+            glUniform1f(ctx.volumetric_uniform_exposure, 1.5f);
+*/
+            glUniform1f(ctx.volumetric_uniform_scattering, 0.15f);
+            glUniform1f(ctx.volumetric_uniform_exposure, 2.0f);
+
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        }
+        else
+        {
+            /* Use base post processing shader */
+            glUseProgram(ctx.post_process_base_program);
+            glBindVertexArray(ctx.fbo_screen_vao);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color);
+            glUniform1i(ctx.post_process_base_uniform_screen_texture, 0);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         }
     }
