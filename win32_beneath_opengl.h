@@ -91,9 +91,9 @@ static char beneath_opengl_shader_volumetric_fragment[] = {
     "\n"
     "    // === Screen-space light position (for directional light, pick near top-center) ===\n"
     "  vec2 lightPos = light_pos; \n"
-    "  vec2 delta = lightPos - vUV; \n"
+    "  vec2 delta = lightPos - vUV; // pixel -> light \n"
     "  float dist = length(delta); \n"
-    "  vec2 stepv = delta / 64.0; \n"
+    "  vec2 stepv = delta / 64.0;   \n"
     "\n"
     "    // === Parameters controlling ray decay ===\n"
     "    float decay = 0.97;\n"
@@ -748,6 +748,7 @@ BENEATH_API void beneath_opengl_draw_call_print(beneath_draw_call *draw_call, be
 }
 
 static m4x4 shadow_pv;
+static v3 shadow_light_position;
 
 BENEATH_API beneath_bool beneath_opengl_draw(
     beneath_state *state,         /* The state */
@@ -903,13 +904,12 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             v3 light_direction = vm_v3_normalize(vm_v3(
                 draw_call->lightning->directional.direction[0],
                 draw_call->lightning->directional.direction[1],
-                draw_call->lightning->directional.direction[2]
-            ));
+                draw_call->lightning->directional.direction[2]));
 
             v3 center = vm_v3_zero;
             float distance = 10.0f;
 
-            v3 shadow_light_position = vm_v3_sub(center, vm_v3_mulf(light_direction, distance));
+            shadow_light_position = vm_v3_sub(center, vm_v3_mulf(light_direction, distance));
 
             /*v3 shadow_light_position = vm_v3(-5.0f, 7.0f, 4.0f);*/
             m4x4 shadow_projection = vm_m4x4_orthographic(-10.0f, 10.0f, -10.0f, 10.0f, 1.0f, 50.0f);
@@ -1086,12 +1086,6 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         else if (draw_call->volumetric)
         {
             int i;
-            v3 shadow_light_position = vm_v3(-5.0f, 7.0f, 4.0f);
-            v4 world_light = vm_v4(shadow_light_position.x,
-                                   shadow_light_position.y,
-                                   shadow_light_position.z,
-                                   1.0f);
-
             m4x4 camera_view_projection;
 
             for (i = 0; i < 16; ++i)
@@ -1099,15 +1093,22 @@ BENEATH_API beneath_bool beneath_opengl_draw(
                 camera_view_projection.e[i] = projection_view[i];
             }
 
-            v4 clip = vm_m4x4_mul_v4(camera_view_projection, world_light);
+            v3 cam_pos = vm_v3(camera_position[0], camera_position[1], camera_position[2]);
+            v3 light_dir = vm_v3_normalize(vm_v3(
+                draw_call->lightning->directional.direction[0],
+                draw_call->lightning->directional.direction[1],
+                draw_call->lightning->directional.direction[2]));
 
-            // Perspective divide
+            // Move “back” along the light direction
+            v3 light_point = vm_v3_sub(cam_pos, vm_v3_mulf(light_dir, 20.0f));
+
+            v4 clip = vm_m4x4_mul_v4(camera_view_projection, vm_v4(light_point.x, light_point.y, light_point.z, 1.0f));
             clip.x /= clip.w;
             clip.y /= clip.w;
 
-            // Convert to [0..1] screen space
             float light_x = clip.x * 0.5f + 0.5f;
             float light_y = clip.y * 0.5f + 0.5f;
+
             glUniform2f(ctx.volumetric_uniform_light_pos, light_x, light_y);
 
             /* Use volumetric program */
