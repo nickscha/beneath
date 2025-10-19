@@ -977,6 +977,8 @@ BENEATH_API beneath_bool win32_beneath_api_graphics_draw(
     beneath_state *state,         /* The state */
     beneath_draw_call *draw_call, /* The draw call instanced objects */
     float projection_view[16],    /* The projection view matrix */
+    float projection_inverse[16], /* The projection matrix inversed */
+    float view_inverse[16],       /* The view matrix inversed */
     float camera_position[3]      /* The camera x,y,z position */
 )
 {
@@ -984,6 +986,8 @@ BENEATH_API beneath_bool win32_beneath_api_graphics_draw(
         state,
         draw_call,
         projection_view,
+        projection_inverse,
+        view_inverse,
         camera_position,
         win32_beneath_api_io_print);
 }

@@ -77,36 +77,42 @@ static char beneath_opengl_shader_pixel_fragment[] = {
     "}                                        \n"};
 
 static char beneath_opengl_shader_volumetric_fragment[] = {
-    "#version 330 core                        \n"
-    "in vec2 vUV;                             \n"
-    "out vec4 FragColor;                      \n"
-    "uniform sampler2D screen_texture; /* Color texture from camera view */\n"
-    "uniform sampler2D depth_texture;  /* Depth texture from camera view */\n"
-    "uniform sampler2D shadow_map;     /* Shadow Map from light position view */\n"
-    "uniform vec3 light_position;      /* The directional light position */\n"
-    "uniform vec3 light_direction;     /* The direction of the light */\n"
-    "uniform mat4 light_projection;    /* The light projection matrix */\n"
-    "uniform mat4 light_view;          /* The ligh view matrix */\n"
-    "uniform vec3 camera_position;     /* The camera position */\n"
-    "uniform mat4 camera_projection_inverse; /* The camera projection matrix inversed */\n"
-    "uniform mat4 camera_view_inverse;       /* The camera view matri inversed */\n"
+    "#version 330 core\n"
+    "in vec2 vUV;\n"
+    "out vec4 FragColor;\n"
     "\n"
-    "const float near_plane = 1.0f; /* for testing depth texture visualization */\n"
-    "const float far_plane = 100.0f;/* for testing depth texture visualization */\n"
+    "uniform sampler2D screen_texture;\n"
+    "uniform vec2 light_pos;\n"
+    "uniform float scattering;  // intensity of light shafts (0.1–1.0)\n"
+    "uniform float exposure;    // brightness scale (0.5–2.0)\n"
     "\n"
-    "float LinearizeDepth(float depth)\n"
-    "{\n"
-    "    float z = depth * 2.0 - 1.0; // back to NDC\n"
-    "    return (2.0 * near_plane * far_plane) / (far_plane + near_plane - z * (far_plane - near_plane));\n"
-    "}\n"
-    "void main() {                            \n"
-    "    vec3 color = texture(screen_texture, vUV).rgb;\n"
+    "void main() {\n"
+    "    vec3 base = texture(screen_texture, vUV).rgb;\n"
+    "\n"
+    "    // === Screen-space light position (for directional light, pick near top-center) ===\n"
+    "  vec2 lightPos = light_pos; \n"
+    "  vec2 delta = lightPos - vUV; // pixel -> light \n"
+    "  float dist = length(delta); \n"
+    "  vec2 stepv = delta / 64.0;   \n"
+    "\n"
+    "    // === Parameters controlling ray decay ===\n"
+    "    float decay = 0.97;\n"
+    "    float illumination = 0.0;\n"
+    "    float weight = 0.8;\n"
+    "    vec2 coord = vUV;\n"
+    "\n"
+    "    for (int i = 0; i < 64; i++) {\n"
+    "        coord += stepv;\n"
+    "        float sample = texture(screen_texture, coord).r; // brightness sample\n"
+    "        illumination += sample * weight;\n"
+    "        weight *= decay;\n"
+    "    }\n"
+    "\n"
+    "    // === Combine rays with base scene ===\n"
+    "    vec3 shafts = vec3(illumination) * scattering * exposure;\n"
+    "    vec3 color = base + shafts;\n"
     "    FragColor = vec4(color, 1.0);\n"
-    "}                                        \n"};
-
-/*"float depth = texture(depth_texture, vUV).r;\n"
-"float linear = LinearizeDepth(depth) / far_plane; // normalize to [0,1]\n"
-"FragColor = vec4(vec3(linear), 1.0);\n"   */
+    "}\n"};
 
 /******************************/
 /* Types & Structs            */
@@ -196,8 +202,7 @@ typedef struct beneath_opengl_context
 
     /* Screen FBO */
     unsigned int fbo_screen;
-    unsigned int fbo_screen_color_texture;
-    unsigned int fbo_screen_depth_texture;
+    unsigned int fbo_screen_color;
     unsigned int fbo_screen_depth;
     unsigned int fbo_screen_vao;
     unsigned int fbo_screen_vbo;
@@ -223,15 +228,11 @@ typedef struct beneath_opengl_context
     /* Volumetric raymarch */
     unsigned int volumetric_program;
     int volumetric_uniform_screen_texture;
-    int volumetric_uniform_depth_texture;
     int volumetric_uniform_shadow_map;
-    int volumetric_uniform_light_position;
-    int volumetric_uniform_light_direction;
-    int volumetric_uniform_light_projection;
-    int volumetric_uniform_light_view;
-    int volumetric_uniform_camera_position;
-    int volumetric_uniform_camera_projection_inverse;
-    int volumetric_uniform_camera_view_inverse;
+    int volumetric_uniform_light_pos;
+    int volumetric_uniform_camera_pos;
+    int volumetric_uniform_scattering;
+    int volumetric_uniform_exposure;
 
 } beneath_opengl_context;
 
@@ -660,29 +661,18 @@ BENEATH_API beneath_bool beneath_opengl_framebuffer_screen_initialize(beneath_op
     glBindFramebuffer(GL_FRAMEBUFFER, ctx->fbo_screen);
 
     /* Color texture */
-    glGenTextures(1, &ctx->fbo_screen_color_texture);
-    glBindTexture(GL_TEXTURE_2D, ctx->fbo_screen_color_texture);
+    glGenTextures(1, &ctx->fbo_screen_color);
+    glBindTexture(GL_TEXTURE_2D, ctx->fbo_screen_color);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ctx->fbo_screen_width, ctx->fbo_screen_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->fbo_screen_color_texture, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->fbo_screen_color, 0);
 
-    /* Detph texture */
-    glGenTextures(1, &ctx->fbo_screen_depth_texture);
-    glBindTexture(GL_TEXTURE_2D, ctx->fbo_screen_depth_texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, ctx->fbo_screen_width, ctx->fbo_screen_height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo_screen_depth_texture, 0);
-
-    /* Depth buffer
+    /* Depth buffer */
     glGenRenderbuffers(1, &ctx->fbo_screen_depth);
     glBindRenderbuffer(GL_RENDERBUFFER, ctx->fbo_screen_depth);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, ctx->fbo_screen_width, ctx->fbo_screen_height);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ctx->fbo_screen_depth);
-*/
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
     {
@@ -757,8 +747,6 @@ BENEATH_API void beneath_opengl_draw_call_print(beneath_draw_call *draw_call, be
     print(__FILE__, __LINE__, buffer);
 }
 
-static m4x4 shadow_projection;
-static m4x4 shadow_view;
 static m4x4 shadow_pv;
 static v3 shadow_light_position;
 
@@ -766,8 +754,6 @@ BENEATH_API beneath_bool beneath_opengl_draw(
     beneath_state *state,         /* The state */
     beneath_draw_call *draw_call, /* The draw call instanced objects */
     float projection_view[16],    /* The projection view matrix */
-    float projection_inverse[16], /* The projection matrix inversed */
-    float view_inverse[16],       /* The view matrix inversed */
     float camera_position[3],     /* The camera x,y,z position */
     beneath_api_io_print print)
 {
@@ -859,15 +845,11 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             }
 
             ctx.volumetric_uniform_screen_texture = glGetUniformLocation(ctx.volumetric_program, "screen_texture");
-            ctx.volumetric_uniform_depth_texture = glGetUniformLocation(ctx.volumetric_program, "depth_texture");
             ctx.volumetric_uniform_shadow_map = glGetUniformLocation(ctx.volumetric_program, "shadow_map");
-            ctx.volumetric_uniform_light_position = glGetUniformLocation(ctx.volumetric_program, "light_position");
-            ctx.volumetric_uniform_light_direction = glGetUniformLocation(ctx.volumetric_program, "light_direction");
-            ctx.volumetric_uniform_light_projection = glGetUniformLocation(ctx.volumetric_program, "light_projection");
-            ctx.volumetric_uniform_light_view = glGetUniformLocation(ctx.volumetric_program, "light_view");
-            ctx.volumetric_uniform_camera_position = glGetUniformLocation(ctx.volumetric_program, "camera_position");
-            ctx.volumetric_uniform_camera_projection_inverse = glGetUniformLocation(ctx.volumetric_program, "camera_projection_inverse");
-            ctx.volumetric_uniform_camera_view_inverse = glGetUniformLocation(ctx.volumetric_program, "camera_view_inverse");
+            ctx.volumetric_uniform_light_pos = glGetUniformLocation(ctx.volumetric_program, "ligth_pos");
+            ctx.volumetric_uniform_camera_pos = glGetUniformLocation(ctx.volumetric_program, "camera_pos");
+            ctx.volumetric_uniform_scattering = glGetUniformLocation(ctx.volumetric_program, "scattering");
+            ctx.volumetric_uniform_exposure = glGetUniformLocation(ctx.volumetric_program, "exposure");
         }
 
         /* Pixel */
@@ -930,8 +912,8 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             shadow_light_position = vm_v3_sub(center, vm_v3_mulf(light_direction, distance));
 
             /*v3 shadow_light_position = vm_v3(-5.0f, 7.0f, 4.0f);*/
-            shadow_projection = vm_m4x4_orthographic(-10.0f, 10.0f, -10.0f, 10.0f, 1.0f, 50.0f);
-            shadow_view = vm_m4x4_lookAt(shadow_light_position, vm_v3_zero, vm_v3_up);
+            m4x4 shadow_projection = vm_m4x4_orthographic(-10.0f, 10.0f, -10.0f, 10.0f, 1.0f, 50.0f);
+            m4x4 shadow_view = vm_m4x4_lookAt(shadow_light_position, vm_v3_zero, vm_v3_up);
             shadow_pv = vm_m4x4_mul(shadow_projection, shadow_view);
         }
     }
@@ -1096,36 +1078,61 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             glUseProgram(ctx.blit_program);
             glBindVertexArray(ctx.fbo_screen_vao);
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color_texture);
+            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color);
             glUniform1i(ctx.blit_tex_uniform, 0);
             glUniform2f(ctx.blit_texel_uniform, 1.0f / (float)ctx.fbo_screen_width, 1.0f / (float)ctx.fbo_screen_height);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         }
         else if (draw_call->volumetric)
         {
+            int i;
+            m4x4 camera_view_projection;
+
+            for (i = 0; i < 16; ++i)
+            {
+                camera_view_projection.e[i] = projection_view[i];
+            }
+
+            v3 cam_pos = vm_v3(camera_position[0], camera_position[1], camera_position[2]);
+            v3 light_dir = vm_v3_normalize(vm_v3(
+                draw_call->lightning->directional.direction[0],
+                draw_call->lightning->directional.direction[1],
+                draw_call->lightning->directional.direction[2]));
+
+            // Move “back” along the light direction
+            v3 light_point = vm_v3_sub(cam_pos, vm_v3_mulf(light_dir, 20.0f));
+
+            v4 clip = vm_m4x4_mul_v4(camera_view_projection, vm_v4(light_point.x, light_point.y, light_point.z, 1.0f));
+            clip.x /= clip.w;
+            clip.y /= clip.w;
+
+            float light_x = clip.x * 0.5f + 0.5f;
+            float light_y = clip.y * 0.5f + 0.5f;
+
+            glUniform2f(ctx.volumetric_uniform_light_pos, light_x, light_y);
+
             /* Use volumetric program */
             glUseProgram(ctx.volumetric_program);
             glBindVertexArray(ctx.fbo_screen_vao);
 
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color_texture);
+            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color);
             glUniform1i(ctx.volumetric_uniform_screen_texture, 0);
 
             glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_depth_texture);
-            glUniform1i(ctx.volumetric_uniform_depth_texture, 1);
-
-            glActiveTexture(GL_TEXTURE2);
             glBindTexture(GL_TEXTURE_2D, ctx.shadow_texture_depth);
-            glUniform1i(ctx.volumetric_uniform_shadow_map, 2);
+            glUniform1i(ctx.volumetric_uniform_shadow_map, 1);
 
-            glUniform3f(ctx.volumetric_uniform_light_position, shadow_light_position.x, shadow_light_position.y, shadow_light_position.z);
-            glUniform3f(ctx.volumetric_uniform_light_direction, draw_call->lightning->directional.direction[0], draw_call->lightning->directional.direction[1], draw_call->lightning->directional.direction[2]);
-            glUniformMatrix4fv(ctx.volumetric_uniform_light_projection, 1, GL_FALSE, shadow_projection.e);
-            glUniformMatrix4fv(ctx.volumetric_uniform_light_view, 1, GL_FALSE, shadow_view.e);
-            glUniform3f(ctx.volumetric_uniform_camera_position, camera_position[0], camera_position[1], camera_position[2]);
-            glUniformMatrix4fv(ctx.volumetric_uniform_camera_projection_inverse, 1, GL_FALSE, projection_inverse);
-            glUniformMatrix4fv(ctx.volumetric_uniform_camera_view_inverse, 1, GL_FALSE, view_inverse);
+            glUniform2f(ctx.volumetric_uniform_light_pos, light_x, light_y);
+
+            glUniform3f(ctx.volumetric_uniform_camera_pos, camera_position[0], camera_position[1], camera_position[2]);
+
+            /*
+            glUniform1f(ctx.volumetric_uniform_scattering, 0.08f);
+            glUniform1f(ctx.volumetric_uniform_exposure, 1.5f);
+*/
+            glUniform1f(ctx.volumetric_uniform_scattering, 0.04f);
+            glUniform1f(ctx.volumetric_uniform_exposure, 1.0f);
 
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         }
@@ -1135,7 +1142,7 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             glUseProgram(ctx.post_process_base_program);
             glBindVertexArray(ctx.fbo_screen_vao);
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color_texture);
+            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color);
             glUniform1i(ctx.post_process_base_uniform_screen_texture, 0);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         }

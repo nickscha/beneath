@@ -255,12 +255,16 @@ void beneath_update(
     /* Draw Call Test */
     {
         m4x4 projection;
+        m4x4 projection_inverse;
         m4x4 view;
+        m4x4 view_inverse;
         m4x4 projection_view;
         float *camera_pos;
 
         projection = vm_m4x4_perspective(vm_radf(cam.fov), (float)state->window_width / (float)state->window_height, 0.1f, 1000.0f);
+        projection_inverse = vm_m4x4_inverse(projection);
         view = vm_m4x4_lookAt(cam.position, vm_v3_zero, cam.up);
+        view_inverse = vm_m4x4_inverse(view);
         projection_view = vm_m4x4_mul(projection, view);
         camera_pos = vm_v3_data(&cam.position);
 
@@ -268,6 +272,8 @@ void beneath_update(
             state,
             &draw_call,
             projection_view.e,
+            projection_inverse.e,
+            view_inverse.e,
             camera_pos);
     }
 }
