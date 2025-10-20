@@ -1,8 +1,6 @@
 # beneath (in development)
 A C89 standard compliant, single header, nostdlib (no C Standard Library) Beneath Graphics Engine (BENEATH).
 
-For more information please look at the "beneath.h" file or take a look at the "examples" or "tests" folder.
-
 > [!WARNING]
 > THIS PROJECT IS A WORK IN PROGRESS! ANYTHING CAN CHANGE AT ANY MOMENT WITHOUT ANY NOTICE! USE THIS PROJECT AT YOUR OWN RISK!
 
@@ -18,11 +16,6 @@ int main() {
     return 0;
 }
 ```
-
-## Run Example: nostdlib, freestsanding
-
-In this repo you will find the "examples/beneath_win32_nostdlib.c" with the corresponding "build.bat" file which
-creates an executable only linked to "kernel32" and is not using the C standard library and executes the program afterwards.
 
 ## "nostdlib" Motivation & Purpose
 
