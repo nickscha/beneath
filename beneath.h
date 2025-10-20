@@ -155,24 +155,10 @@ typedef struct beneath_light_directional
 
 } beneath_light_directional;
 
-typedef struct beneath_light_point
-{
-
-  float position[3];
-  float ambient[3];
-  float diffuse[3];
-  float specular[3];
-  float constant;
-  float linear;
-  float quadratic;
-
-} beneath_light_point;
-
 typedef struct beneath_lightning
 {
 
   beneath_light_directional directional;
-  beneath_light_point point;
 
 } beneath_lightning;
 
@@ -528,7 +514,6 @@ typedef struct beneath_api
 
   /* Platform Graphics */
   beneath_api_graphics_draw graphics_draw;
-  /* graphics_toggle_wireframe  */
 
 } beneath_api;
 

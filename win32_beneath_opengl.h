@@ -313,7 +313,6 @@ typedef struct beneath_opengl_context
     /* Shaders */
     beneath_opengl_shader shaders[BENEATH_OPENGL_SHADERS_MAX];
     unsigned int shaders_size;
-    unsigned int shaders_previous_index;
     unsigned int shaders_active_index;
 
     /* Screen FBO */
@@ -1050,8 +1049,6 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             float distance = 10.0f;
 
             shadow_light_position = vm_v3_sub(center, vm_v3_mulf(light_direction, distance));
-
-            /*v3 shadow_light_position = vm_v3(-5.0f, 7.0f, 4.0f);*/
             shadow_projection = vm_m4x4_orthographic(-10.0f, 10.0f, -10.0f, 10.0f, 1.0f, 50.0f);
             shadow_view = vm_m4x4_lookAt(shadow_light_position, vm_v3_zero, vm_v3_up);
             shadow_pv = vm_m4x4_mul(shadow_projection, shadow_view);
