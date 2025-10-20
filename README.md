@@ -1,32 +1,10 @@
-# beneath
+# beneath (in development)
 A C89 standard compliant, single header, nostdlib (no C Standard Library) Beneath Graphics Engine (BENEATH).
 
 For more information please look at the "beneath.h" file or take a look at the "examples" or "tests" folder.
 
 > [!WARNING]
 > THIS PROJECT IS A WORK IN PROGRESS! ANYTHING CAN CHANGE AT ANY MOMENT WITHOUT ANY NOTICE! USE THIS PROJECT AT YOUR OWN RISK!
-
-<p align="center">
-  <a href="https://github.com/nickscha/beneath/releases">
-    <img src="https://img.shields.io/github/v/release/nickscha/beneath?style=flat-square&color=blue" alt="Latest Release">
-  </a>
-  <a href="https://github.com/nickscha/beneath/releases">
-    <img src="https://img.shields.io/github/downloads/nickscha/beneath/total?style=flat-square&color=brightgreen" alt="Downloads">
-  </a>
-  <a href="https://opensource.org/licenses/MIT">
-    <img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square" alt="License">
-  </a>
-  <img src="https://img.shields.io/badge/Standard-C89-orange?style=flat-square" alt="C Standard">
-  <img src="https://img.shields.io/badge/nolib-nostdlib-lightgrey?style=flat-square" alt="nostdlib">
-</p>
-
-## **Features**
-- **C89 compliant** — portable and legacy-friendly  
-- **Single-header API** — just include `beneath.h`  
-- **nostdlib** — no dependency on the C Standard Library  
-- **Minimal binary size** — optimized for small executables  
-- **Cross-platform** — Windows, Linux, MacOs 
-- **Strict compilation** — built with aggressive warnings & safety checks  
 
 ## Quick Start
 
