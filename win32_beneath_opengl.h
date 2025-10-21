@@ -293,8 +293,6 @@ typedef struct beneath_opengl_shader
 {
     unsigned int program_id;
     unsigned int hash;
-    char code_vertex[8192];
-    char code_fragment[8192];
     int uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_COUNT];
 
 } beneath_opengl_shader;
@@ -737,16 +735,19 @@ BENEATH_API beneath_bool beneath_opengl_shader_load(
     /* shader.program_id = -1; */
     shader.hash = draw_call_hash;
 
+    char code_vertex[8192];
+    char code_fragment[8192];
+
     /* Generate shader code */
     if (!beneath_opengl_shader_generate(
             draw_call,
-            shader.code_vertex, sizeof(shader.code_vertex),
-            shader.code_fragment, sizeof(shader.code_fragment)))
+            code_vertex, sizeof(code_vertex),
+            code_fragment, sizeof(code_fragment)))
     {
         return false;
     }
 
-    if (!beneath_opengl_shader_create(&shader.program_id, shader.code_vertex, shader.code_fragment, print))
+    if (!beneath_opengl_shader_create(&shader.program_id, code_vertex, code_fragment, print))
     {
         return false;
     }
@@ -803,7 +804,7 @@ BENEATH_API beneath_bool beneath_opengl_framebuffer_screen_initialize(beneath_op
     glBindRenderbuffer(GL_RENDERBUFFER, ctx->fbo_screen_depth);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, ctx->fbo_screen_width, ctx->fbo_screen_height);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ctx->fbo_screen_depth);
-*/
+    */
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
     {
@@ -906,13 +907,6 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             print(__FILE__, __LINE__, "cannot load shaders!!!\n");
             return false;
         }
-
-        /*
-        print(__FILE__, __LINE__, "Vertex Shader Code:\n");
-        print(__FILE__, __LINE__, ctx.shaders[ctx.shaders_active_index].code_vertex);
-        print(__FILE__, __LINE__, "Fragment Shader Code:\n");
-        print(__FILE__, __LINE__, ctx.shaders[ctx.shaders_active_index].code_fragment);
-        */
 
         glGenVertexArrays(BENEATH_OPENGL_MESHES_MAX, ctx.storage_vertex_array);
         glGenBuffers(BENEATH_OPENGL_MESHES_MAX * BENEATH_OPENGL_SHADER_LAYOUT_COUNT, ctx.storage_buffer_object);

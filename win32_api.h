@@ -451,36 +451,24 @@ typedef struct tagCREATESTRUCTA
 
 /* WIN32 Function prototyes */
 #ifndef _WINDOWS_
-
 WIN32_API(int)
 GetDeviceCaps(void *hdc, int index);
-
 WIN32_API(unsigned long)
 WaitForSingleObject(void *hHandle, unsigned long dwMilliseconds);
-
 WIN32_API(int)
 SetProcessDPIAware(void);
-
 WIN32_API(unsigned long)
 SetThreadExecutionState(unsigned long esFlags);
-
 WIN32_API(void *)
 CreateWaitableTimerA(void *lpSecutiryAttributes, int bManualReset, const char *lptimername);
-
 WIN32_API(int)
-SetWaitableTimer(void *hTimer, LARGE_INTEGER *lpDueTime, long lPeriod,
-                 void *pfnCompletionRoutine,
-                 void *lpArgToCompletionRoutine,
-                 int fResume);
-
+SetWaitableTimer(void *hTimer, LARGE_INTEGER *lpDueTime, long lPeriod, void *pfnCompletionRoutine, void *lpArgToCompletionRoutine, int fResume);
 WIN32_API(void *)
 GetModuleHandleA(const char *lpModuleName);
-
 WIN32_API(LONG_PTR)
 GetWindowLongPtrA(void *hWnd, int nIndex);
 WIN32_API(LONG_PTR)
 SetWindowLongPtrA(void *hWnd, int nIndex, LONG_PTR dwNewLong);
-
 WIN32_API(unsigned int)
 timeBeginPeriod(unsigned int uPeriod);
 WIN32_API(unsigned int)
@@ -527,8 +515,6 @@ WIN32_API(void)
 PostQuitMessage(int nExitCode);
 WIN32_API(int)
 wsprintfA(char *unnamedParam1, char *unnamedParam2, ...);
-WIN32_API(int)
-wvsprintfA(char *unnamedParam1, char *unnamedParam2, char *arglist);
 WIN32_API(long)
 CompareFileTime(FILETIME *lpFileTime1, FILETIME *lpFileTime2);
 WIN32_API(int)
