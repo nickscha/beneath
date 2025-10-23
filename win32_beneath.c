@@ -1010,12 +1010,26 @@ int mainCRTStartup(void)
     beneath_controller_input input = {0};
     win32_beneath_state win32_state = {0};
 
-    /* Make this process high priority and set timer resolution */
-    SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);                        /* Set process to high priority */
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);                    /* Set thread to high priority */
+    /* Set process to high priority */
+    if (!SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS))
+    {
+        return 1;
+    }
+
+    /* Set thread to high priority */
+    if (!SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST))
+    {
+        return 1;
+    }
+
     SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED); /* Prevent Windows sleep during running application */
     win32_beneath_enable_dpi_awareness();                                              /* Make App DPI-Aware */
-    timeBeginPeriod(1);                                                                /* Set timer resolution to 1 millisecond */
+
+    /* Set timer resolution to 1 millisecond */
+    if (timeBeginPeriod(1) == 97) /* TIMERR_NOCANDO */
+    {
+        return 1;
+    }
 
     memory.memory_offset = sizeof(beneath_state);
     memory.memory = VirtualAlloc(0, memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -1139,7 +1153,6 @@ int mainCRTStartup(void)
 
     win32_beneath_api_io_print(__FILE__, __LINE__, "[win32] ended\n");
 
-    timeEndPeriod(1);
     SetThreadExecutionState(ES_CONTINUOUS);
 
     ExitProcess(0);
