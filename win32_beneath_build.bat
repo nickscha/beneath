@@ -9,7 +9,7 @@ set DEF_COMPILER_FLAGS=-mconsole -march=native -mtune=native -std=c89 -pedantic 
 -fno-builtin -ffreestanding -fno-asynchronous-unwind-tables -fuse-ld=lld ^
 -Wall -Wextra -Werror -Wvla -Wconversion -Wdouble-promotion -Wsign-conversion -Wmissing-field-initializers -Wuninitialized -Winit-self -Wunused -Wunused-macros -Wunused-local-typedefs
 
-set DEF_FLAGS_LINKER=-lkernel32 -luser32 -lgdi32 -lopengl32 -lwinmm
+set DEF_FLAGS_LINKER=-lkernel32 -luser32 -lgdi32 -lopengl32
 
 mkdir %DIST_DIR%
 

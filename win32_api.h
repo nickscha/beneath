@@ -469,10 +469,6 @@ WIN32_API(LONG_PTR)
 GetWindowLongPtrA(void *hWnd, int nIndex);
 WIN32_API(LONG_PTR)
 SetWindowLongPtrA(void *hWnd, int nIndex, LONG_PTR dwNewLong);
-WIN32_API(unsigned int)
-timeBeginPeriod(unsigned int uPeriod);
-WIN32_API(unsigned int)
-timeEndPeriod(unsigned int uPeriod);
 WIN32_API(void *)
 GetForegroundWindow(void);
 WIN32_API(void *)

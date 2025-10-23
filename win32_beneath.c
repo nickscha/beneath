@@ -225,7 +225,6 @@ BENEATH_API BENEATH_INLINE beneath_bool win32_beneath_load_application(void)
 
 BENEATH_API BENEATH_INLINE void win32_beneath_enable_dpi_awareness(void)
 {
-
     void *shcore = LoadLibraryA("Shcore.dll");
 
     if (shcore)
@@ -1026,9 +1025,30 @@ int mainCRTStartup(void)
     win32_beneath_enable_dpi_awareness();                                              /* Make App DPI-Aware */
 
     /* Set timer resolution to 1 millisecond */
-    if (timeBeginPeriod(1) == 97) /* TIMERR_NOCANDO */
     {
-        return 1;
+        void *winmm = LoadLibraryA("Winmm.dll");
+
+        if (winmm)
+        {
+            typedef unsigned int(__stdcall * timeBeginPeriodProc)(unsigned int);
+            timeBeginPeriodProc timeBeginPeriod;
+            unsigned int res = 0;
+
+            *(void **)(&timeBeginPeriod) = GetProcAddress(winmm, "timeBeginPeriod");
+
+            if (timeBeginPeriod)
+            {
+                res = timeBeginPeriod(1);
+            }
+
+            FreeLibrary(winmm);
+
+            /* TIMERR_NOCANDO */
+            if (res == 97)
+            {
+                return 1;
+            }
+        }
     }
 
     memory.memory_offset = sizeof(beneath_state);
