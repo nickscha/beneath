@@ -255,7 +255,7 @@ BENEATH_API BENEATH_INLINE int win32_beneath_get_monitor_refresh_rate(void *wind
     return (rate > 1) ? rate : 60;
 }
 
-BENEATH_API BENEATH_INLINE void win32_precise_sleep(void **timer, double seconds)
+BENEATH_API BENEATH_INLINE void win32_beneath_precise_sleep(void **timer, double seconds)
 {
     LARGE_INTEGER li;
     long long val = -(long long)(seconds * 10000000.0); /* relative 100ns intervals */
@@ -1167,7 +1167,7 @@ int mainCRTStartup(void)
         if (state->frames_per_second_target > 0)
         {
             double targetFrameTime = 1.0 / (double)state->frames_per_second_target;
-            win32_precise_sleep(&timer, targetFrameTime);
+            win32_beneath_precise_sleep(&timer, targetFrameTime);
         }
     }
 
