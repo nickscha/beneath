@@ -3,78 +3,7 @@
 
 #include "beneath.h"
 #include "win32_api.h"
-
-/* --- Global OpenGL library handle --- */
-static void *win32_beneath_opengl_lib;
-
-/* Function pointer types */
-typedef void *(__stdcall *wglGetProcAddressProc)(char *);
-static wglGetProcAddressProc wglGetProcAddressPtr;
-
-/* Load a single OpenGL function */
-void *win32_beneath_opengl_load_function(char *gl_function_name)
-{
-    void *fn;
-
-    /* Load opengl32.dll and wglGetProcAddress if not done yet */
-    if (!win32_beneath_opengl_lib)
-    {
-        win32_beneath_opengl_lib = LoadLibraryA("opengl32.dll");
-
-        if (!win32_beneath_opengl_lib)
-        {
-            return (void *)0;
-        }
-
-        *(void **)(&wglGetProcAddressPtr) = GetProcAddress(win32_beneath_opengl_lib, "wglGetProcAddress");
-
-        if (!wglGetProcAddressPtr)
-        {
-            FreeLibrary(win32_beneath_opengl_lib);
-            win32_beneath_opengl_lib = (void *)0;
-            return (void *)0;
-        }
-    }
-
-    /* Try wglGetProcAddress first (modern functions) */
-    fn = (void *)wglGetProcAddressPtr(gl_function_name);
-
-    /* Invalid function checks */
-    if (!fn || fn == (void *)1 || fn == (void *)2 || fn == (void *)3 || fn == (void *)-1)
-    {
-        /* Fallback to GetProcAddress for OpenGL 1.1 functions */
-        fn = (void *)GetProcAddress(win32_beneath_opengl_lib, gl_function_name);
-    }
-
-    return fn;
-}
-
-typedef int (*PFNWGLSWAPINTERVALEXTPROC2)(int interval);
-static PFNWGLSWAPINTERVALEXTPROC2 wglSwapIntervalEXT;
-
-#define BENEATH_FUNC_FROM_PTR(type, p) ((union { void *obj; type fn; }){(p)}.fn)
-
-#define BENEATH_OPENGL_MAX_REPORTED_FAILURES 10
-static char *beneath_opengl_failed_loads[BENEATH_OPENGL_MAX_REPORTED_FAILURES + 1];
-static unsigned int failedLoads = 0;
-
-#define BENEATH_OPENGL_FUNCTION(type, name)                                        \
-    name = BENEATH_FUNC_FROM_PTR(type, win32_beneath_opengl_load_function(#name)); \
-    if (!name && failedLoads < BENEATH_OPENGL_MAX_REPORTED_FAILURES)               \
-    {                                                                              \
-        beneath_opengl_failed_loads[failedLoads++] = #name;                        \
-    }
-
-beneath_bool win32_beneath_opengl_load_functions(beneath_api_io_print print)
-{
-    BENEATH_OPENGL_FUNCTION(PFNWGLSWAPINTERVALEXTPROC2, wglSwapIntervalEXT);
-
-    (void)print;
-
-    return true;
-}
-
-#include "win32_opengl.h"
+#include "win32_beneath_opengl_loader.h"
 #include "deps/sb.h" /* Temporary for prototype: String builder */
 #include "deps/vm.h" /* Temporary for prototype: Vector math */
 

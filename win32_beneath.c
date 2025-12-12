@@ -2,9 +2,9 @@
 #define BENEATH_PLATFORM_LAYER_NAME "win32_beneath"
 #include "beneath.h"
 
-#include "win32_api.h"            /* windows.h replacement   */
-#include "win32_opengl.h"         /* opengl loading function */
-#include "win32_beneath_opengl.h" /* beneath opengl renderer */
+#include "win32_api.h"                   /* windows.h replacement   */
+#include "win32_beneath_opengl_loader.h" /* opengl loading function */
+#include "win32_beneath_opengl.h"        /* beneath opengl renderer */
 
 FILETIME win32_beneath_file_modification_time(char *file)
 {
@@ -655,9 +655,14 @@ BENEATH_API BENEATH_INLINE beneath_bool win32_beneath_initialize_opengl(win32_be
         return false;
     }
 
+    if (!win32_beneath_opengl_load_wgl_functions())
+    {
+        return false;
+    }
+
     fakeRC = wglCreateContext(fakeDC);
 
-    if (!fakeRC || !wglMakeCurrent(fakeDC, fakeRC) || !win32_opengl_init_gl_functions())
+    if (!fakeRC || !wglMakeCurrent(fakeDC, fakeRC) || !win32_beneath_opengl_load_functions())
     {
         return false;
     }

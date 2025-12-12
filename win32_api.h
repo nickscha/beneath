@@ -357,97 +357,13 @@ typedef struct tagCREATESTRUCTA
 #define RID_INPUT 0x10000003
 #define RIM_TYPEMOUSE 0
 #define CS_OWNDC 0x0020
-#define GL_TRUE 1
-#define WGL_DRAW_TO_WINDOW_ARB 0x2001
-#define WGL_SUPPORT_OPENGL_ARB 0x2010
-#define WGL_DOUBLE_BUFFER_ARB 0x2011
-#define WGL_PIXEL_TYPE_ARB 0x2013
-#define WGL_TYPE_RGBA_ARB 0x202B
-#define WGL_ACCELERATION_ARB 0x2003
-#define WGL_FULL_ACCELERATION_ARB 0x2027
-#define WGL_COLOR_BITS_ARB 0x2014
-#define WGL_ALPHA_BITS_ARB 0x201B
-#define WGL_DEPTH_BITS_ARB 0x2022
-#define WGL_STENCIL_BITS_ARB 0x2023
-#define WGL_SAMPLE_BUFFERS_ARB 0x2041
-#define WGL_SAMPLES_ARB 0x2042
-#define WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
-#define WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
-#define WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
-#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
-#define WGL_CONTEXT_FLAGS_ARB 0x2094
-#define WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB 0x00000002
-#define WGL_CONTEXT_DEBUG_BIT_ARB 0x00000001
-#define GL_VENDOR 0x1F00
-#define GL_RENDERER 0x1F01
-#define GL_VERSION 0x1F02
-#define GL_EXTENSIONS 0x1F03
 #define SW_SHOW 5
 #define SW_SHOWDEFAULT 10
-#define GL_COLOR_BUFFER_BIT 0x00004000
-#define GL_SAMPLES_PASSED 0x8914
-#define GL_ANY_SAMPLES_PASSED 0x8C2F
-#define GL_QUERY_RESULT 0x8866
-#define GL_QUERY_RESULT_AVAILABLE 0x8867
 #define PFD_DOUBLEBUFFER 0x00000001
 #define PFD_SUPPORT_OPENGL 0x00000020
 #define PFD_DRAW_TO_WINDOW 0x00000004
 #define PFD_TYPE_RGBA 0
 #define NULL ((void *)0)
-#define GL_COMPILE_STATUS 0x8B81
-#define GL_VERTEX_SHADER 0x8B31
-#define GL_FRAGMENT_SHADER 0x8B30
-#define GL_LINK_STATUS 0x8B82
-#define GL_ARRAY_BUFFER 0x8892
-#define GL_STATIC_DRAW 0x88E4
-#define GL_DYNAMIC_DRAW 0x88E8
-#define GL_INT 0x1404
-#define GL_FLOAT 0x1406
-#define GL_FALSE 0
-#define GL_TRIANGLES 0x0004
-#define GL_TRIANGLE_STRIP 0x0005
-#define GL_DEPTH_TEST 0x0B71
-#define GL_MULTISAMPLE 0x809D
-#define GL_DEPTH_BUFFER_BIT 0x00000100
-#define GL_FRONT_AND_BACK 0x0408
-#define GL_LINE 0x1B01
-#define GL_FILL 0x1B02
-#define GL_CULL_FACE 0x0B44
-#define GL_FRONT 0x0404
-#define GL_BACK 0x0405
-#define GL_CCW 0x0901
-#define GL_ELEMENT_ARRAY_BUFFER 0x8893
-#define GL_UNSIGNED_INT 0x1405
-#define GL_SYNC_GPU_COMMANDS_COMPLETE 0x9117
-#define GL_FRAMEBUFFER 0x8D40
-#define GL_DEPTH_ATTACHMENT 0x8D00
-#define GL_DEPTH_COMPONENT 0x1902
-#define GL_TEXTURE_2D 0x0DE1
-#define GL_RGBA 0x1908
-#define GL_RED 0x1903
-#define GL_UNSIGNED_BYTE 0x1401
-#define GL_TEXTURE_MIN_FILTER 0x2801
-#define GL_TEXTURE_MAG_FILTER 0x2800
-#define GL_LINEAR 0x2601
-#define GL_COLOR_ATTACHMENT0 0x8CE0
-#define GL_RENDERBUFFER 0x8D41
-#define GL_DEPTH_COMPONENT24 0x81A6
-#define GL_FRAMEBUFFER_COMPLETE 0x8CD5
-#define GL_NEAREST 0x2600
-#define GL_NONE 0
-#define GL_TEXTURE_WRAP_S 0x2802
-#define GL_TEXTURE_WRAP_T 0x2803
-#define GL_CLAMP_TO_BORDER 0x812D
-#define GL_CLAMP_TO_EDGE 0x812F
-#define GL_TEXTURE_BORDER_COLOR 0x1004
-#define GL_TEXTURE0 0x84C0
-#define GL_TEXTURE1 0x84C1
-#define GL_TEXTURE2 0x84C2
-#define GL_TEXTURE3 0x84C3
-#define GL_TEXTURE4 0x84C4
-#define GL_BLEND 0x0BE2
-#define GL_SRC_ALPHA 0x0302
-#define GL_ONE_MINUS_SRC_ALPHA 0x0303
 
 /* WIN32 Function prototyes */
 #ifndef _WINDOWS_
@@ -571,62 +487,6 @@ WIN32_API(void *)
 GetStdHandle(unsigned long nStdHandle);
 WIN32_API(int)
 WriteConsoleA(void *hConsoleOutput, void *lpBuffer, unsigned longnNumberOfCharsToWrite, unsigned long *lpNumberOfCharsWritten, void *lpReserved);
-WIN32_API(void *)
-wglCreateContext(void *unnamedParam1);
-WIN32_API(void *)
-wglGetCurrentContext(void);
-WIN32_API(void *)
-wglGetCurrentDC(void);
-WIN32_API(int)
-wglDeleteContext(void *unnamedParam1);
-WIN32_API(int)
-wglMakeCurrent(void *unnamedParam1, void *unnamedParam2);
-WIN32_API(PROC)
-wglGetProcAddress(char *unnamedParam1);
-/* Windows provided OPEN GL 1.X functions */
-WIN32_API(unsigned char) * glGetString(unsigned int name);
-WIN32_API(void)
-glClearColor(float red, float green, float blue, float alpha);
-WIN32_API(void)
-glClear(unsigned int mask);
-WIN32_API(unsigned int)
-glGetError(void);
-WIN32_API(void)
-glEnable(unsigned int cap);
-WIN32_API(void)
-glDisable(unsigned int cap);
-WIN32_API(void)
-glBlendFunc(unsigned int sfactor, unsigned int dfactor);
-WIN32_API(void)
-glPolygonMode(unsigned int face, unsigned int mode);
-WIN32_API(void)
-glCullFace(unsigned int mode);
-WIN32_API(void)
-glFrontFace(unsigned int mode);
-WIN32_API(void)
-glViewport(int x, int y, int width, int height);
-WIN32_API(void)
-glDrawElements(unsigned int mode, int count, unsigned int type, void *indices);
-WIN32_API(void)
-glColorMask(unsigned char red, unsigned char green, unsigned char blue, unsigned char alpha);
-WIN32_API(void)
-glDepthMask(unsigned char flag);
-WIN32_API(void)
-glReadBuffer(unsigned int mode);
-WIN32_API(void)
-glDrawBuffer(unsigned int mode);
-WIN32_API(void)
-glReadPixels(int x, int y, int width, int height, unsigned int format, unsigned int type, void *pixels);
-WIN32_API(void)
-glGenTextures(int n, unsigned int *textures);
-WIN32_API(void)
-glBindTexture(unsigned int target, unsigned int texture);
-WIN32_API(void)
-glTexImage2D(unsigned int target, int level, int internalformat, int width, int height, int border, int format, unsigned int type, void *pixels);
-WIN32_API(void)
-glTexParameteri(unsigned int target, unsigned int pname, int param);
-WIN32_API(void)
-glTexParameterfv(unsigned int target, unsigned int pname, float *params);
 WIN32_API(int)
 RegisterRawInputDevices(PCRAWINPUTDEVICE pRawInputDevices, unsigned int uiNumDevices, unsigned int cbSize);
 WIN32_API(unsigned int)
