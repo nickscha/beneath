@@ -258,11 +258,28 @@ BENEATH_API BENEATH_INLINE int win32_beneath_get_monitor_refresh_rate(void *wind
 BENEATH_API BENEATH_INLINE void win32_beneath_precise_sleep(void **timer, double seconds)
 {
     LARGE_INTEGER li;
-long long val = -(long long)(seconds * 10000000.0); /* relative 100ns intervals */
-    li.LowPart = (unsigned long)(val & 0xFFFFFFFF);
-    li.HighPart = (long)((val >> 32) & 0xFFFFFFFF);
+    double total_intervals = seconds * 10000000.0; /* 100ns intervals */
+    unsigned long low, high;
 
-    SetWaitableTimer(*timer, &li, 0, NULL, NULL, false);
+    /* Split into 32-bit low/high parts */
+    low = (unsigned long)((unsigned int)total_intervals);
+    high = (unsigned long)(total_intervals / 4294967296.0);
+
+    /* Negate manually for relative time */
+    if (low > 0)
+    {
+        low = (~low + 1);
+        high = ~high + (low == 0 ? 1 : 0);
+    }
+    else
+    {
+        high = ~high + 1;
+    }
+
+    li.LowPart = low;
+    li.HighPart = (long)high;
+
+    SetWaitableTimer(*timer, &li, 0, NULL, NULL, 0);
     WaitForSingleObject(*timer, INFINITE);
 }
 
