@@ -55,14 +55,14 @@ static PFNWGLSWAPINTERVALEXTPROC2 wglSwapIntervalEXT;
 #define BENEATH_FUNC_FROM_PTR(type, p) ((union { void *obj; type fn; }){(p)}.fn)
 
 #define BENEATH_OPENGL_MAX_REPORTED_FAILURES 10
-static char *sogl_failedLoads[BENEATH_OPENGL_MAX_REPORTED_FAILURES + 1];
+static char *beneath_opengl_failed_loads[BENEATH_OPENGL_MAX_REPORTED_FAILURES + 1];
 static unsigned int failedLoads = 0;
 
 #define BENEATH_OPENGL_FUNCTION(type, name)                                        \
     name = BENEATH_FUNC_FROM_PTR(type, win32_beneath_opengl_load_function(#name)); \
     if (!name && failedLoads < BENEATH_OPENGL_MAX_REPORTED_FAILURES)               \
     {                                                                              \
-        sogl_failedLoads[failedLoads++] = #name;                                   \
+        beneath_opengl_failed_loads[failedLoads++] = #name;                        \
     }
 
 beneath_bool win32_beneath_opengl_load_functions(beneath_api_io_print print)
