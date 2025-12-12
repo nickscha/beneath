@@ -56,7 +56,7 @@ static char beneath_opengl_shader_pixel_fragment[] = {
     "in vec2 vUV;                             \n"
     "out vec4 FragColor;                      \n"
     "uniform sampler2D screen_texture;        \n"
-    "uniform vec2 texel_size;                 \n" // 1.0 / FBO size
+    "uniform vec2 texel_size;                 \n"
     "void main() {                            \n"
     "    vec3 color = texture(screen_texture, vUV).rgb;\n"
     "    color = pow(color, vec3(1.0 / gamma));\n"
@@ -362,10 +362,11 @@ typedef struct beneath_opengl_context
 BENEATH_API int beneath_opengl_shader_compile(char *shaderCode, unsigned int shaderType, beneath_api_io_print print)
 {
     unsigned int shaderId = glCreateShader(shaderType);
+    int success;
+
     glShaderSource(shaderId, 1, &shaderCode, NULL);
     glCompileShader(shaderId);
 
-    int success;
     glGetShaderiv(shaderId, GL_COMPILE_STATUS, &success);
 
     if (!success)
@@ -716,28 +717,26 @@ BENEATH_API beneath_bool beneath_opengl_shader_load(
     beneath_api_io_print print)
 {
     unsigned int draw_call_hash = beneath_draw_call_hash(draw_call);
-
-    /* Check if shader already exists */
-    /* TODO: load from hashmap in the future */
-    {
-        unsigned int i;
-
-        for (i = 0; i < ctx->shaders_size; ++i)
-        {
-            if (ctx->shaders[i].hash == draw_call_hash)
-            {
-                ctx->shaders_active_index = i;
-                return true;
-            }
-        }
-    }
-
     beneath_opengl_shader shader = {0};
-    /* shader.program_id = -1; */
-    shader.hash = draw_call_hash;
 
     char code_vertex[8192];
     char code_fragment[8192];
+
+    /* Check if shader already exists */
+    /* TODO: load from hashmap in the future */
+    unsigned int i;
+
+    for (i = 0; i < ctx->shaders_size; ++i)
+    {
+        if (ctx->shaders[i].hash == draw_call_hash)
+        {
+            ctx->shaders_active_index = i;
+            return true;
+        }
+    }
+
+    /* shader.program_id = -1; */
+    shader.hash = draw_call_hash;
 
     /* Generate shader code */
     if (!beneath_opengl_shader_generate(
@@ -754,13 +753,10 @@ BENEATH_API beneath_bool beneath_opengl_shader_load(
     }
 
     /* Load shader uniform locations */
+    for (i = 0; i < BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_COUNT; ++i)
     {
-        unsigned int i;
-        for (i = 0; i < BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_COUNT; ++i)
-        {
-            shader.uniform_locations[i] = -1;
-            shader.uniform_locations[i] = glGetUniformLocation(shader.program_id, beneath_opengl_shader_uniform_names[i]);
-        }
+        shader.uniform_locations[i] = -1;
+        shader.uniform_locations[i] = glGetUniformLocation(shader.program_id, beneath_opengl_shader_uniform_names[i]);
     }
 
     ctx->shaders[ctx->shaders_size] = shader;
@@ -916,6 +912,13 @@ BENEATH_API beneath_bool beneath_opengl_draw(
 
         /* Setup Screen Framebuffer and VAO,VBO */
         {
+            float quad_vertices[] = {
+                /* pos, uv */
+                -1.0f, -1.0f, 0.0f, 0.0f,
+                1.0f, -1.0f, 1.0f, 0.0f,
+                -1.0f, 1.0f, 0.0f, 1.0f,
+                1.0f, 1.0f, 1.0f, 1.0f};
+
             if (!beneath_opengl_framebuffer_screen_initialize(
                     &ctx, print,
                     (int)(draw_call->pixelize ? 300 : state->window_width),
@@ -924,13 +927,6 @@ BENEATH_API beneath_bool beneath_opengl_draw(
                 print(__FILE__, __LINE__, "cannot initialize screen framebuffers!!!\n");
                 return false;
             }
-
-            float quad_vertices[] = {
-                /* pos, uv */
-                -1.0f, -1.0f, 0.0f, 0.0f,
-                1.0f, -1.0f, 1.0f, 0.0f,
-                -1.0f, 1.0f, 0.0f, 1.0f,
-                1.0f, 1.0f, 1.0f, 1.0f};
 
             glGenVertexArrays(1, &ctx.fbo_screen_vao);
             glGenBuffers(1, &ctx.fbo_screen_vbo);
@@ -1007,6 +1003,10 @@ BENEATH_API beneath_bool beneath_opengl_draw(
 #define SHADOW_SIZE 1024
             float border_color[] = {1.0, 1.0, 1.0, 1.0};
 
+            v3 light_direction;
+            v3 center;
+            float distance;
+
             if (!beneath_opengl_shader_create(
                     &ctx.shadow_program,
                     beneath_opengl_shader_shadow_vertex,
@@ -1035,13 +1035,13 @@ BENEATH_API beneath_bool beneath_opengl_draw(
             glReadBuffer(GL_NONE);
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-            v3 light_direction = vm_v3_normalize(vm_v3(
+            light_direction = vm_v3_normalize(vm_v3(
                 draw_call->lightning->directional.direction[0],
                 draw_call->lightning->directional.direction[1],
                 draw_call->lightning->directional.direction[2]));
 
-            v3 center = vm_v3_zero;
-            float distance = 10.0f;
+            center = vm_v3_zero;
+            distance = 10.0f;
 
             shadow_light_position = vm_v3_sub(center, vm_v3_mulf(light_direction, distance));
             shadow_projection = vm_m4x4_orthographic(-10.0f, 10.0f, -10.0f, 10.0f, 1.0f, 50.0f);
@@ -1050,218 +1050,219 @@ BENEATH_API beneath_bool beneath_opengl_draw(
         }
     }
 
-    beneath_mesh *mesh = draw_call->mesh;
-    beneath_opengl_shader shader_active = ctx.shaders[ctx.shaders_active_index];
-
-    if (mesh->changed)
     {
-        int sizeM4x4 = sizeof(float) * 16;
-        int i;
+        beneath_mesh *mesh = draw_call->mesh;
+        beneath_opengl_shader shader_active = ctx.shaders[ctx.shaders_active_index];
 
-        unsigned int buffer_index = mesh->id * BENEATH_OPENGL_SHADER_LAYOUT_COUNT;
-
-        beneath_opengl_draw_call_print(draw_call, print);
-
-        glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
-
-        /* Vertex data */
-        glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index]);
-        glBufferData(GL_ARRAY_BUFFER, (int)mesh->vertices_count * (int)sizeof(float), mesh->vertices, GL_STATIC_DRAW);
-        glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_POSITION, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
-        glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_POSITION);
-
-        /* Index data */
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 1]);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, (int)mesh->indices_count * (int)sizeof(unsigned int), mesh->indices, GL_STATIC_DRAW);
-
-        /* UV data */
-        if (mesh->uvs_count > 0)
+        if (mesh->changed)
         {
-            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 2]);
-            glBufferData(GL_ARRAY_BUFFER, (int)mesh->uvs_count * (int)sizeof(float), mesh->uvs, GL_STATIC_DRAW);
-            glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_UV, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
-            glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_UV);
-        }
+            int sizeM4x4 = sizeof(float) * 16;
+            int i;
 
-        /* Normals data */
-        if (mesh->normals_count > 0)
-        {
-            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 3]);
-            glBufferData(GL_ARRAY_BUFFER, (int)mesh->normals_count * (int)sizeof(float), mesh->normals, GL_STATIC_DRAW);
-            glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_NORMAL, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
-            glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_NORMAL);
-        }
+            unsigned int buffer_index = mesh->id * BENEATH_OPENGL_SHADER_LAYOUT_COUNT;
 
-        /* Tangent data */
-        if (mesh->tangents_count > 0)
-        {
-            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 4]);
-            glBufferData(GL_ARRAY_BUFFER, (int)mesh->tangents_count * (int)sizeof(float), mesh->tangents, GL_STATIC_DRAW);
-            glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_TANGENT, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
-            glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_TANGENT);
-        }
+            beneath_opengl_draw_call_print(draw_call, print);
 
-        /* Bitangent data */
-        if (mesh->bitangents_count > 0)
-        {
-            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 5]);
-            glBufferData(GL_ARRAY_BUFFER, (int)mesh->bitangents_count * (int)sizeof(float), mesh->bitangents, GL_STATIC_DRAW);
-            glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_BITANGENT, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
-            glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_BITANGENT);
-        }
+            glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
 
-        /* Color data */
-        if (mesh->colors_count > 0)
-        {
-            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 6]);
-            glBufferData(GL_ARRAY_BUFFER, (int)mesh->colors_count * (int)sizeof(float), mesh->colors, GL_STATIC_DRAW);
-            glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_COLOR, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
-            glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_COLOR);
-        }
+            /* Vertex data */
+            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index]);
+            glBufferData(GL_ARRAY_BUFFER, (int)mesh->vertices_count * (int)sizeof(float), mesh->vertices, GL_STATIC_DRAW);
+            glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_POSITION, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+            glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_POSITION);
 
-        /* Instanced model */
-        glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 7]);
-        glBufferData(GL_ARRAY_BUFFER, (int)draw_call->models_count * sizeM4x4, &draw_call->models[0], GL_STATIC_DRAW);
+            /* Index data */
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 1]);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, (int)mesh->indices_count * (int)sizeof(unsigned int), mesh->indices, GL_STATIC_DRAW);
 
-        /* set attribute pointers 6 - 9 for model matrix (4 times vec4) */
-        for (i = 0; i < 4; ++i)
-        {
-            int model_location = BENEATH_OPENGL_SHADER_LAYOUT_INSTANCE_MODEL;
-            glEnableVertexAttribArray((unsigned int)(model_location + i));
-            glVertexAttribPointer((unsigned int)(model_location + i), 4, GL_FLOAT, GL_FALSE, sizeM4x4, (void *)((unsigned long long)i * sizeof(float) * 4));
-            glVertexAttribDivisor((unsigned int)(model_location + i), 1);
-        }
-
-        glBindVertexArray(0);
-    }
-
-    /* (1) Shadow Map Render Pass */
-    if (draw_call->shadow)
-    {
-        glCullFace(GL_FRONT);
-        glBindFramebuffer(GL_FRAMEBUFFER, ctx.shadow_fbo);
-        glViewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
-        glClear(GL_DEPTH_BUFFER_BIT);
-
-        glUseProgram(ctx.shadow_program);
-        glUniformMatrix4fv(ctx.shadow_uniform_pv, 1, GL_FALSE, shadow_pv.e);
-        glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
-        glDrawElementsInstanced(GL_TRIANGLES, (int)mesh->indices_count, GL_UNSIGNED_INT, 0, (int)draw_call->models_count);
-        glBindVertexArray(0);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, (int)state->window_width, (int)state->window_height);
-        glCullFace(GL_BACK);
-    }
-
-    /* Post processing enabled. Render to fbo_screen */
-    if (draw_call->pixelize || draw_call->volumetric)
-    {
-        glBindFramebuffer(GL_FRAMEBUFFER, ctx.fbo_screen);
-        glViewport(0, 0, ctx.fbo_screen_width, ctx.fbo_screen_height);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    }
-    {
-        glUseProgram(shader_active.program_id);
-        glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
-
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, ctx.shadow_texture_depth);
-        glUniform1i(glGetUniformLocation(shader_active.program_id, "shadow_map"), 1);
-        glUniformMatrix4fv(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_PROJECTION_VIEW], 1, GL_FALSE, projection_view);
-        glUniformMatrix4fv(glGetUniformLocation(shader_active.program_id, "light_space_matrix"), 1, GL_FALSE, shadow_pv.e);
-        glUniform3f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_CAMERA_POSITION], camera_position[0], camera_position[1], camera_position[2]);
-
-        if (draw_call->changed)
-        {
-            glUniform1f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_TIME], (float)state->time);
-            glUniform1f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_DELTA_TIME], (float)state->delta_time);
-            glUniform2f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_RESOLUTION], (float)state->window_width, (float)state->window_height);
-
-            if (draw_call->colors_count > 0)
+            /* UV data */
+            if (mesh->uvs_count > 0)
             {
-                glUniform3f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_INSTANCE_COLOR], draw_call->colors[0], draw_call->colors[1], draw_call->colors[2]);
+                glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 2]);
+                glBufferData(GL_ARRAY_BUFFER, (int)mesh->uvs_count * (int)sizeof(float), mesh->uvs, GL_STATIC_DRAW);
+                glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_UV, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
+                glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_UV);
             }
 
-            if (draw_call->lightning)
+            /* Normals data */
+            if (mesh->normals_count > 0)
             {
-                beneath_light_directional *dl = &draw_call->lightning->directional;
-                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.direction"), dl->direction[0], dl->direction[1], dl->direction[2]);
-                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.ambient"), dl->ambient[0], dl->ambient[1], dl->ambient[2]);
-                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.diffuse"), dl->diffuse[0], dl->diffuse[1], dl->diffuse[2]);
-                glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.specular"), dl->specular[0], dl->specular[1], dl->specular[2]);
+                glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 3]);
+                glBufferData(GL_ARRAY_BUFFER, (int)mesh->normals_count * (int)sizeof(float), mesh->normals, GL_STATIC_DRAW);
+                glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_NORMAL, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+                glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_NORMAL);
             }
+
+            /* Tangent data */
+            if (mesh->tangents_count > 0)
+            {
+                glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 4]);
+                glBufferData(GL_ARRAY_BUFFER, (int)mesh->tangents_count * (int)sizeof(float), mesh->tangents, GL_STATIC_DRAW);
+                glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_TANGENT, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+                glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_TANGENT);
+            }
+
+            /* Bitangent data */
+            if (mesh->bitangents_count > 0)
+            {
+                glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 5]);
+                glBufferData(GL_ARRAY_BUFFER, (int)mesh->bitangents_count * (int)sizeof(float), mesh->bitangents, GL_STATIC_DRAW);
+                glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_BITANGENT, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+                glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_BITANGENT);
+            }
+
+            /* Color data */
+            if (mesh->colors_count > 0)
+            {
+                glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 6]);
+                glBufferData(GL_ARRAY_BUFFER, (int)mesh->colors_count * (int)sizeof(float), mesh->colors, GL_STATIC_DRAW);
+                glVertexAttribPointer(BENEATH_OPENGL_SHADER_LAYOUT_COLOR, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+                glEnableVertexAttribArray(BENEATH_OPENGL_SHADER_LAYOUT_COLOR);
+            }
+
+            /* Instanced model */
+            glBindBuffer(GL_ARRAY_BUFFER, ctx.storage_buffer_object[buffer_index + 7]);
+            glBufferData(GL_ARRAY_BUFFER, (int)draw_call->models_count * sizeM4x4, &draw_call->models[0], GL_STATIC_DRAW);
+
+            /* set attribute pointers 6 - 9 for model matrix (4 times vec4) */
+            for (i = 0; i < 4; ++i)
+            {
+                int model_location = BENEATH_OPENGL_SHADER_LAYOUT_INSTANCE_MODEL;
+                glEnableVertexAttribArray((unsigned int)(model_location + i));
+                glVertexAttribPointer((unsigned int)(model_location + i), 4, GL_FLOAT, GL_FALSE, sizeM4x4, (void *)((unsigned long)i * sizeof(float) * 4));
+                glVertexAttribDivisor((unsigned int)(model_location + i), 1);
+            }
+
+            glBindVertexArray(0);
         }
 
-        glDrawElementsInstanced(GL_TRIANGLES, (int)mesh->indices_count, GL_UNSIGNED_INT, 0, (int)draw_call->models_count);
-        glBindVertexArray(0);
-    }
-
-    /* --- Post-processing --- */
-    if (draw_call->pixelize || draw_call->volumetric)
-    {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, (int)state->window_width, (int)state->window_height);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        if (draw_call->pixelize)
+        /* (1) Shadow Map Render Pass */
+        if (draw_call->shadow)
         {
-            /* Use the pixel shader program */
-            glUseProgram(ctx.blit_program);
-            glBindVertexArray(ctx.fbo_screen_vao);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color_texture);
-            glUniform1i(ctx.blit_tex_uniform, 0);
-            glUniform2f(ctx.blit_texel_uniform, 1.0f / (float)ctx.fbo_screen_width, 1.0f / (float)ctx.fbo_screen_height);
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            glCullFace(GL_FRONT);
+            glBindFramebuffer(GL_FRAMEBUFFER, ctx.shadow_fbo);
+            glViewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
+            glClear(GL_DEPTH_BUFFER_BIT);
+
+            glUseProgram(ctx.shadow_program);
+            glUniformMatrix4fv(ctx.shadow_uniform_pv, 1, GL_FALSE, shadow_pv.e);
+            glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
+            glDrawElementsInstanced(GL_TRIANGLES, (int)mesh->indices_count, GL_UNSIGNED_INT, 0, (int)draw_call->models_count);
+            glBindVertexArray(0);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, (int)state->window_width, (int)state->window_height);
+            glCullFace(GL_BACK);
         }
-        else if (draw_call->volumetric)
-        {
-            /* Use volumetric program */
-            glUseProgram(ctx.volumetric_program);
-            glBindVertexArray(ctx.fbo_screen_vao);
 
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color_texture);
-            glUniform1i(ctx.volumetric_uniform_screen_texture, 0);
+        /* Post processing enabled. Render to fbo_screen */
+        if (draw_call->pixelize || draw_call->volumetric)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, ctx.fbo_screen);
+            glViewport(0, 0, ctx.fbo_screen_width, ctx.fbo_screen_height);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        }
+        {
+            glUseProgram(shader_active.program_id);
+            glBindVertexArray(ctx.storage_vertex_array[mesh->id]);
 
             glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_depth_texture);
-            glUniform1i(ctx.volumetric_uniform_depth_texture, 1);
-
-            glActiveTexture(GL_TEXTURE2);
             glBindTexture(GL_TEXTURE_2D, ctx.shadow_texture_depth);
-            glUniform1i(ctx.volumetric_uniform_shadow_map, 2);
+            glUniform1i(glGetUniformLocation(shader_active.program_id, "shadow_map"), 1);
+            glUniformMatrix4fv(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_PROJECTION_VIEW], 1, GL_FALSE, projection_view);
+            glUniformMatrix4fv(glGetUniformLocation(shader_active.program_id, "light_space_matrix"), 1, GL_FALSE, shadow_pv.e);
+            glUniform3f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_CAMERA_POSITION], camera_position[0], camera_position[1], camera_position[2]);
 
-            glUniform3f(ctx.volumetric_uniform_light_position, shadow_light_position.x, shadow_light_position.y, shadow_light_position.z);
-            glUniform3f(ctx.volumetric_uniform_light_direction, draw_call->lightning->directional.direction[0], draw_call->lightning->directional.direction[1], draw_call->lightning->directional.direction[2]);
-            glUniformMatrix4fv(ctx.volumetric_uniform_light_projection, 1, GL_FALSE, shadow_projection.e);
-            glUniformMatrix4fv(ctx.volumetric_uniform_light_view, 1, GL_FALSE, shadow_view.e);
-            glUniform3f(ctx.volumetric_uniform_camera_position, camera_position[0], camera_position[1], camera_position[2]);
-            glUniformMatrix4fv(ctx.volumetric_uniform_camera_projection_inverse, 1, GL_FALSE, projection_inverse);
-            glUniformMatrix4fv(ctx.volumetric_uniform_camera_view_inverse, 1, GL_FALSE, view_inverse);
+            if (draw_call->changed)
+            {
+                glUniform1f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_TIME], (float)state->time);
+                glUniform1f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_DELTA_TIME], (float)state->delta_time);
+                glUniform2f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_RESOLUTION], (float)state->window_width, (float)state->window_height);
 
-            glUniform1f(glGetUniformLocation(ctx.volumetric_program, "camera_far"), 100.0f);
-            glUniform1f(glGetUniformLocation(ctx.volumetric_program, "cone_angle"), 20.0f);
-            glUniform1f(glGetUniformLocation(ctx.volumetric_program, "shadow_bias"), 0.001f);
+                if (draw_call->colors_count > 0)
+                {
+                    glUniform3f(shader_active.uniform_locations[BENEATH_OPENGL_SHADER_UNIFORM_LOCATION_INSTANCE_COLOR], draw_call->colors[0], draw_call->colors[1], draw_call->colors[2]);
+                }
 
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+                if (draw_call->lightning)
+                {
+                    beneath_light_directional *dl = &draw_call->lightning->directional;
+                    glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.direction"), dl->direction[0], dl->direction[1], dl->direction[2]);
+                    glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.ambient"), dl->ambient[0], dl->ambient[1], dl->ambient[2]);
+                    glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.diffuse"), dl->diffuse[0], dl->diffuse[1], dl->diffuse[2]);
+                    glUniform3f(glGetUniformLocation(shader_active.program_id, "dir_light.specular"), dl->specular[0], dl->specular[1], dl->specular[2]);
+                }
+            }
+
+            glDrawElementsInstanced(GL_TRIANGLES, (int)mesh->indices_count, GL_UNSIGNED_INT, 0, (int)draw_call->models_count);
+            glBindVertexArray(0);
         }
-        else
+
+        /* --- Post-processing --- */
+        if (draw_call->pixelize || draw_call->volumetric)
         {
-            /* Use base post processing shader */
-            glUseProgram(ctx.post_process_base_program);
-            glBindVertexArray(ctx.fbo_screen_vao);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color_texture);
-            glUniform1i(ctx.post_process_base_uniform_screen_texture, 0);
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, (int)state->window_width, (int)state->window_height);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            if (draw_call->pixelize)
+            {
+                /* Use the pixel shader program */
+                glUseProgram(ctx.blit_program);
+                glBindVertexArray(ctx.fbo_screen_vao);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color_texture);
+                glUniform1i(ctx.blit_tex_uniform, 0);
+                glUniform2f(ctx.blit_texel_uniform, 1.0f / (float)ctx.fbo_screen_width, 1.0f / (float)ctx.fbo_screen_height);
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            }
+            else if (draw_call->volumetric)
+            {
+                /* Use volumetric program */
+                glUseProgram(ctx.volumetric_program);
+                glBindVertexArray(ctx.fbo_screen_vao);
+
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color_texture);
+                glUniform1i(ctx.volumetric_uniform_screen_texture, 0);
+
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_depth_texture);
+                glUniform1i(ctx.volumetric_uniform_depth_texture, 1);
+
+                glActiveTexture(GL_TEXTURE2);
+                glBindTexture(GL_TEXTURE_2D, ctx.shadow_texture_depth);
+                glUniform1i(ctx.volumetric_uniform_shadow_map, 2);
+
+                glUniform3f(ctx.volumetric_uniform_light_position, shadow_light_position.x, shadow_light_position.y, shadow_light_position.z);
+                glUniform3f(ctx.volumetric_uniform_light_direction, draw_call->lightning->directional.direction[0], draw_call->lightning->directional.direction[1], draw_call->lightning->directional.direction[2]);
+                glUniformMatrix4fv(ctx.volumetric_uniform_light_projection, 1, GL_FALSE, shadow_projection.e);
+                glUniformMatrix4fv(ctx.volumetric_uniform_light_view, 1, GL_FALSE, shadow_view.e);
+                glUniform3f(ctx.volumetric_uniform_camera_position, camera_position[0], camera_position[1], camera_position[2]);
+                glUniformMatrix4fv(ctx.volumetric_uniform_camera_projection_inverse, 1, GL_FALSE, projection_inverse);
+                glUniformMatrix4fv(ctx.volumetric_uniform_camera_view_inverse, 1, GL_FALSE, view_inverse);
+
+                glUniform1f(glGetUniformLocation(ctx.volumetric_program, "camera_far"), 100.0f);
+                glUniform1f(glGetUniformLocation(ctx.volumetric_program, "cone_angle"), 20.0f);
+                glUniform1f(glGetUniformLocation(ctx.volumetric_program, "shadow_bias"), 0.001f);
+
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            }
+            else
+            {
+                /* Use base post processing shader */
+                glUseProgram(ctx.post_process_base_program);
+                glBindVertexArray(ctx.fbo_screen_vao);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, ctx.fbo_screen_color_texture);
+                glUniform1i(ctx.post_process_base_uniform_screen_texture, 0);
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            }
         }
+
+        draw_call->changed = false;
+        draw_call->mesh->changed = false;
     }
-
-    draw_call->changed = false;
-    draw_call->mesh->changed = false;
-
     return true;
 }
 

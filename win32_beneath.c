@@ -258,7 +258,7 @@ BENEATH_API BENEATH_INLINE int win32_beneath_get_monitor_refresh_rate(void *wind
 BENEATH_API BENEATH_INLINE void win32_beneath_precise_sleep(void **timer, double seconds)
 {
     LARGE_INTEGER li;
-    long long val = -(long long)(seconds * 10000000.0); /* relative 100ns intervals */
+long long val = -(long long)(seconds * 10000000.0); /* relative 100ns intervals */
     li.LowPart = (unsigned long)(val & 0xFFFFFFFF);
     li.HighPart = (long)((val >> 32) & 0xFFFFFFFF);
 
@@ -447,12 +447,13 @@ BENEATH_API BENEATH_INLINE LONG_PTR WIN32_API_CALLBACK win32_beneath_window_call
     case WM_INPUT:
     {
         unsigned int dwSize = 0;
+#define WIN32_BENEATH_RAWINPUT_BUFFER_SIZE 128
+        static unsigned char rawBuffer[WIN32_BENEATH_RAWINPUT_BUFFER_SIZE];
+        RAWINPUT *raw;
 
         GetRawInputData((RAWINPUT *)lParam, RID_INPUT, NULL, &dwSize, sizeof(RAWINPUTHEADER));
 
-#define WIN32_BENEATH_RAWINPUT_BUFFER_SIZE 128
-        static unsigned char rawBuffer[WIN32_BENEATH_RAWINPUT_BUFFER_SIZE];
-        RAWINPUT *raw = (RAWINPUT *)rawBuffer;
+        raw = (RAWINPUT *)rawBuffer;
 
         if (dwSize <= sizeof(rawBuffer) &&
             GetRawInputData((RAWINPUT *)lParam, RID_INPUT, raw, &dwSize, sizeof(RAWINPUTHEADER)) == dwSize)
@@ -608,6 +609,34 @@ BENEATH_API BENEATH_INLINE beneath_bool win32_beneath_initialize_opengl(win32_be
 
     unsigned long windowStyle;
 
+    PIXELFORMATDESCRIPTOR fakePFD = {0};
+    RECT rect = {0};
+
+    int pixelAttribs[] = {
+        WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
+        WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
+        WGL_DOUBLE_BUFFER_ARB, GL_TRUE,
+        WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
+        WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
+        WGL_COLOR_BITS_ARB, 32,
+        WGL_ALPHA_BITS_ARB, 8,
+        WGL_DEPTH_BITS_ARB, 24,
+        WGL_STENCIL_BITS_ARB, 8,
+        0};
+
+    int pixelFormatID;
+    unsigned int numFormats;
+    int status;
+
+    int contextAttribs[] = {
+        WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+        WGL_CONTEXT_MINOR_VERSION_ARB, 3,
+        WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB | WGL_CONTEXT_DEBUG_BIT_ARB,
+        WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+        0};
+
+    void *rc;
+
     windowClass.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
     windowClass.lpfnWndProc = win32_beneath_window_callback;
     windowClass.hInstance = instance;
@@ -639,7 +668,6 @@ BENEATH_API BENEATH_INLINE beneath_bool win32_beneath_initialize_opengl(win32_be
 
     fakeDC = GetDC(fakeWND);
 
-    PIXELFORMATDESCRIPTOR fakePFD = {0};
     fakePFD.nSize = sizeof(fakePFD);
     fakePFD.nVersion = 1;
     fakePFD.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
@@ -670,7 +698,9 @@ BENEATH_API BENEATH_INLINE beneath_bool win32_beneath_initialize_opengl(win32_be
     /* Find out center location of the window*/
     windowStyle = WS_CAPTION | WS_SYSMENU | WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME;
 
-    RECT rect = {0, 0, (long)state->window_width, (long)state->window_height};
+    rect.right = (long)state->window_width;
+    rect.bottom = (long)state->window_height;
+
     AdjustWindowRect(&rect, windowStyle, false);
     state->window_width = (unsigned int)(rect.right - rect.left);
     state->window_height = (unsigned int)(rect.bottom - rect.top);
@@ -693,21 +723,7 @@ BENEATH_API BENEATH_INLINE beneath_bool win32_beneath_initialize_opengl(win32_be
 
     *dc = GetDC(*window_handle);
 
-    int pixelAttribs[] = {
-        WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
-        WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
-        WGL_DOUBLE_BUFFER_ARB, GL_TRUE,
-        WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
-        WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
-        WGL_COLOR_BITS_ARB, 32,
-        WGL_ALPHA_BITS_ARB, 8,
-        WGL_DEPTH_BITS_ARB, 24,
-        WGL_STENCIL_BITS_ARB, 8,
-        0};
-
-    int pixelFormatID;
-    unsigned int numFormats;
-    int status = wglChoosePixelFormatARB(*dc, pixelAttribs, 0, 1, &pixelFormatID, &numFormats);
+    status = wglChoosePixelFormatARB(*dc, pixelAttribs, 0, 1, &pixelFormatID, &numFormats);
 
     if (!status || !numFormats)
     {
@@ -717,14 +733,8 @@ BENEATH_API BENEATH_INLINE beneath_bool win32_beneath_initialize_opengl(win32_be
     SetPixelFormat(*dc, pixelFormatID, NULL);
 
     /* Open GL 3.3 specification */
-    int contextAttribs[] = {
-        WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-        WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-        WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB | WGL_CONTEXT_DEBUG_BIT_ARB,
-        WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-        0};
 
-    void *rc = wglCreateContextAttribsARB(*dc, 0, contextAttribs);
+    rc = wglCreateContextAttribsARB(*dc, 0, contextAttribs);
 
     if (!rc)
     {
@@ -785,11 +795,11 @@ BENEATH_API BENEATH_INLINE void win32_beneath_update_state(beneath_state *state,
         /****************************/
         /* Window mode handling     */
         /****************************/
+        RECT rect;
         MONITORINFO mi;
+
         mi.cbSize = sizeof(mi);
         GetMonitorInfoA(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi);
-
-        RECT rect;
 
         switch (state->window_mode)
         {
@@ -845,7 +855,10 @@ BENEATH_API BENEATH_INLINE void win32_beneath_update_state(beneath_state *state,
             else
             {
                 /* resize windowed mode */
-                RECT rect = {0, 0, (long)state->window_width, (long)state->window_height};
+                RECT rect = {0};
+                rect.right = (long)state->window_width;
+                rect.bottom = (long)state->window_height;
+
                 AdjustWindowRect(&rect, (unsigned long)GetWindowLongA(hwnd, GWL_STYLE), false);
                 SetWindowPos(hwnd, NULL, 0, 0, rect.right - rect.left, rect.bottom - rect.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
             }
@@ -1014,6 +1027,10 @@ int mainCRTStartup(void)
     beneath_controller_input input = {0};
     win32_beneath_state win32_state = {0};
 
+    void *window_handle = (void *)0;
+    void *dc = (void *)0;
+    void *timer = (void *)0;
+
     /* Set process to high priority */
     if (!SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS))
     {
@@ -1088,9 +1105,7 @@ int mainCRTStartup(void)
     api.graphics_draw = win32_beneath_api_graphics_draw;
 
     /* Load window and initialize opengl 3.3 */
-    void *window_handle = (void *)0;
-    void *dc = (void *)0;
-    void *timer = CreateWaitableTimerA(NULL, true, NULL);
+    timer = CreateWaitableTimerA(NULL, true, NULL);
 
     if (!timer)
     {
@@ -1128,11 +1143,13 @@ int mainCRTStartup(void)
         /******************************/
         /*  HOT-Reload Code           */
         /******************************/
-        FILETIME ddlFtCurrent = win32_beneath_file_modification_time(app.dllName);
-
-        if (CompareFileTime(&ddlFtCurrent, &app.lastWriteTime) != 0 && win32_beneath_load_application())
         {
-            win32_beneath_api_io_print(__FILE__, __LINE__, "Hot reloaded application dll!\n");
+            FILETIME ddlFtCurrent = win32_beneath_file_modification_time(app.dllName);
+
+            if (CompareFileTime(&ddlFtCurrent, &app.lastWriteTime) != 0 && win32_beneath_load_application())
+            {
+                win32_beneath_api_io_print(__FILE__, __LINE__, "Hot reloaded application dll!\n");
+            }
         }
 
 #endif

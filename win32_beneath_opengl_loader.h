@@ -320,7 +320,9 @@ static void *win32_beneath_opengl_load_function(char *gl_function_name)
     return function;
 }
 
-#define BENEATH_FUNC_FROM_PTR(type, p) ((union { void *obj; type fn; }){(p)}.fn)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#define BENEATH_FUNC_FROM_PTR(type, p) ((type)(p))
 #define BENEATH_OPENGL_MAX_REPORTED_FAILURES 8
 
 static char *beneath_opengl_failed_loads[BENEATH_OPENGL_MAX_REPORTED_FAILURES + 1];
@@ -427,5 +429,6 @@ static int win32_beneath_opengl_load_functions(void)
 
     return beneath_opengl_failed_loads_count < 1;
 }
+#pragma GCC diagnostic pop
 
 #endif /* WIN32_BENEATH_OPENGL_LOADER_H */
