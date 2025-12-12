@@ -1,79 +1,8 @@
 #ifndef WIN32_BENEATH_OPENGL_LOADER_H
 #define WIN32_BENEATH_OPENGL_LOADER_H
 
-/* NVIDIA Force to use GPU instead of discrete GCPU*/
-__declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;
-
-/* AMD Force discrete GPU */
-__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
-
-#include "win32_api.h"
-
-/* #############################################################################
- * # [Section] Loader Implementation
- * #############################################################################
- */
-/* Global OpenGL library handle */
-static void *win32_beneath_opengl_lib;
-
-/* Function pointer types */
-typedef void *(__stdcall *wglGetProcAddressProc)(char *);
-static wglGetProcAddressProc wglGetProcAddress;
-
-/* Load a single OpenGL function */
-static void *win32_beneath_opengl_load_function(char *gl_function_name)
-{
-    void *function;
-
-    /* Load opengl32.dll and wglGetProcAddress if not done yet */
-    if (!win32_beneath_opengl_lib)
-    {
-        win32_beneath_opengl_lib = LoadLibraryA("opengl32.dll");
-
-        if (!win32_beneath_opengl_lib)
-        {
-            return (void *)0;
-        }
-
-        *(void **)(&wglGetProcAddress) = GetProcAddress(win32_beneath_opengl_lib, "wglGetProcAddress");
-
-        if (!wglGetProcAddress)
-        {
-            FreeLibrary(win32_beneath_opengl_lib);
-            win32_beneath_opengl_lib = (void *)0;
-            return (void *)0;
-        }
-    }
-
-    /* Try wglGetProcAddress first (modern functions) */
-    function = (void *)wglGetProcAddress(gl_function_name);
-
-    /* Invalid function checks */
-    if (!function ||
-        function == (void *)1 ||
-        function == (void *)2 ||
-        function == (void *)3 ||
-        function == (void *)-1)
-    {
-        /* Fallback to GetProcAddress for OpenGL 1.1 functions */
-        function = (void *)GetProcAddress(win32_beneath_opengl_lib, gl_function_name);
-    }
-
-    return function;
-}
-
-#define BENEATH_FUNC_FROM_PTR(type, p) ((union { void *obj; type fn; }){(p)}.fn)
-#define BENEATH_OPENGL_MAX_REPORTED_FAILURES 8
-
-static char *beneath_opengl_failed_loads[BENEATH_OPENGL_MAX_REPORTED_FAILURES + 1];
-static unsigned int beneath_opengl_failed_loads_count = 0;
-
-#define BENEATH_OPENGL_FUNCTION(type, name)                                                \
-    name = BENEATH_FUNC_FROM_PTR(type, win32_beneath_opengl_load_function(#name));         \
-    if (!name && beneath_opengl_failed_loads_count < BENEATH_OPENGL_MAX_REPORTED_FAILURES) \
-    {                                                                                      \
-        beneath_opengl_failed_loads[beneath_opengl_failed_loads_count++] = #name;          \
-    }
+__declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001; /* NVIDIA Force discrete GPU */
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;   /* AMD Force discrete GPU    */
 
 /* #############################################################################
  * # [Section] OpenGL Functions
@@ -335,6 +264,74 @@ static PFNGLVERTEXATTRIBDIVISORPROC glVertexAttribDivisor;
 static PFNGLVERTEXATTRIBIPOINTERPROC glVertexAttribIPointer;
 static PFNGLUNIFORM1IPROC glUniform1i;
 static PFNGLACTIVETEXTUREPROC glActiveTexture;
+
+/* #############################################################################
+ * # [Section] Loader Implementation
+ * #############################################################################
+ */
+#include "win32_api.h"
+
+/* Global OpenGL library handle */
+static void *win32_beneath_opengl_lib;
+
+/* Function pointer types */
+typedef void *(__stdcall *wglGetProcAddressProc)(char *);
+static wglGetProcAddressProc wglGetProcAddress;
+
+/* Load a single OpenGL function */
+static void *win32_beneath_opengl_load_function(char *gl_function_name)
+{
+    void *function;
+
+    /* Load opengl32.dll and wglGetProcAddress if not done yet */
+    if (!win32_beneath_opengl_lib)
+    {
+        win32_beneath_opengl_lib = LoadLibraryA("opengl32.dll");
+
+        if (!win32_beneath_opengl_lib)
+        {
+            return (void *)0;
+        }
+
+        *(void **)(&wglGetProcAddress) = GetProcAddress(win32_beneath_opengl_lib, "wglGetProcAddress");
+
+        if (!wglGetProcAddress)
+        {
+            FreeLibrary(win32_beneath_opengl_lib);
+            win32_beneath_opengl_lib = (void *)0;
+            return (void *)0;
+        }
+    }
+
+    /* Try wglGetProcAddress first (modern functions) */
+    function = (void *)wglGetProcAddress(gl_function_name);
+
+    /* Invalid function checks */
+    if (!function ||
+        function == (void *)1 ||
+        function == (void *)2 ||
+        function == (void *)3 ||
+        function == (void *)-1)
+    {
+        /* Fallback to GetProcAddress for OpenGL 1.1 functions */
+        function = (void *)GetProcAddress(win32_beneath_opengl_lib, gl_function_name);
+    }
+
+    return function;
+}
+
+#define BENEATH_FUNC_FROM_PTR(type, p) ((union { void *obj; type fn; }){(p)}.fn)
+#define BENEATH_OPENGL_MAX_REPORTED_FAILURES 8
+
+static char *beneath_opengl_failed_loads[BENEATH_OPENGL_MAX_REPORTED_FAILURES + 1];
+static unsigned int beneath_opengl_failed_loads_count = 0;
+
+#define BENEATH_OPENGL_FUNCTION(type, name)                                                \
+    name = BENEATH_FUNC_FROM_PTR(type, win32_beneath_opengl_load_function(#name));         \
+    if (!name && beneath_opengl_failed_loads_count < BENEATH_OPENGL_MAX_REPORTED_FAILURES) \
+    {                                                                                      \
+        beneath_opengl_failed_loads[beneath_opengl_failed_loads_count++] = #name;          \
+    }
 
 static int win32_beneath_opengl_load_wgl_functions(void)
 {
