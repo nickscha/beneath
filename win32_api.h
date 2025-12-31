@@ -468,8 +468,6 @@ GetDC(void *hWnd);
 WIN32_API(int)
 ReleaseDC(void *hWnd, void *hDC);
 WIN32_API(int)
-TextOutA(void *hdc, int x, int y, char *lpString, int c);
-WIN32_API(int)
 ChoosePixelFormat(void *hdc, PIXELFORMATDESCRIPTOR *ppfd);
 WIN32_API(int)
 SetPixelFormat(void *hdc, int format, PIXELFORMATDESCRIPTOR *ppfd);
