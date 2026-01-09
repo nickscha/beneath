@@ -1135,7 +1135,10 @@ int mainCRTStartup(void)
     }
 
     /* TODO: proper vsync */
-    state->frames_per_second_target = win32_beneath_get_monitor_refresh_rate(window_handle);
+    if (state->frames_per_second_target != BENEATH_STATE_FRAMES_PER_SECOND_UNLIMITED)
+    {
+        state->frames_per_second_target = win32_beneath_get_monitor_refresh_rate(window_handle);
+    }
 
 #ifdef BENEATH_LIB
     win32_beneath_load_application();
