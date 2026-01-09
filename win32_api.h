@@ -406,6 +406,8 @@ DestroyWindow(void *hWnd);
 WIN32_API(LONG_PTR)
 DefWindowProcA(void *hWnd, unsigned int Msg, UINT_PTR wParam, LONG_PTR lParam);
 WIN32_API(void *)
+LoadIconA(void *hInstance, char *lpIconName);
+WIN32_API(void *)
 LoadCursorA(void *hInstance, char *lpCursorName);
 WIN32_API(int)
 ShowCursor(int bShow);

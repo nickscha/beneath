@@ -657,6 +657,7 @@ BENEATH_API BENEATH_INLINE beneath_bool win32_beneath_initialize_opengl(win32_be
     windowClass.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
     windowClass.lpfnWndProc = win32_beneath_window_callback;
     windowClass.hInstance = instance;
+    windowClass.hIcon = LoadIconA(0, MAKEINTRESOURCEA(32518));
     windowClass.hCursor = LoadCursorA(0, IDC_ARROW);
     windowClass.lpszClassName = BENEATH_STRINGIZE(BENEATH_APPLICATION_LAYER_NAME);
 
