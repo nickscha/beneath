@@ -796,13 +796,6 @@ BENEATH_API beneath_bool beneath_opengl_framebuffer_screen_initialize(beneath_op
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, ctx->fbo_screen_depth_texture, 0);
 
-    /* Depth buffer
-    glGenRenderbuffers(1, &ctx->fbo_screen_depth);
-    glBindRenderbuffer(GL_RENDERBUFFER, ctx->fbo_screen_depth);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, ctx->fbo_screen_width, ctx->fbo_screen_height);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ctx->fbo_screen_depth);
-    */
-
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
     {
         print(__FILE__, __LINE__, "FBO incomplete!\n");
