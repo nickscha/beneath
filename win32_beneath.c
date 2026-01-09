@@ -734,10 +734,6 @@ BENEATH_API BENEATH_INLINE beneath_bool win32_beneath_initialize_opengl(win32_be
         win32_state /* Pass pointer to user data to the window callback */
     );
 
-    /* Modal window
-    SetWindowPos(*window_handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-    */
-
     *dc = GetDC(*window_handle);
 
     status = wglChoosePixelFormatARB(*dc, pixelAttribs, 0, 1, &pixelFormatID, &numFormats);
@@ -750,7 +746,6 @@ BENEATH_API BENEATH_INLINE beneath_bool win32_beneath_initialize_opengl(win32_be
     SetPixelFormat(*dc, pixelFormatID, NULL);
 
     /* Open GL 3.3 specification */
-
     rc = wglCreateContextAttribsARB(*dc, 0, contextAttribs);
 
     if (!rc)
@@ -945,7 +940,7 @@ BENEATH_API BENEATH_INLINE void win32_beneath_update_state(beneath_state *state,
 
 BENEATH_API BENEATH_INLINE void win32_beneath_process_input(beneath_state *state, beneath_controller_input *input)
 {
-    MSG message;
+    MSG message = {0};
 
     while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE))
     {
@@ -1131,6 +1126,7 @@ int mainCRTStartup(void)
 
     if (!win32_beneath_initialize_opengl(&win32_state, &window_handle, &dc))
     {
+        ExitProcess(1);
         return 1;
     }
 
@@ -1141,7 +1137,12 @@ int mainCRTStartup(void)
     }
 
 #ifdef BENEATH_LIB
-    win32_beneath_load_application();
+    if (!win32_beneath_load_application())
+    {
+        win32_beneath_api_io_print(__FILE__, __LINE__, "[win32] Cannot load application library or method beneath_update is not defined!\n");
+        ExitProcess(1);
+        return 1;
+    }
 #endif
 
     last_time = win32_beneath_api_perf_time_nanoseconds();
