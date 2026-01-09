@@ -133,7 +133,6 @@ typedef void (*PFNGLBINDTEXTUREPROC)(unsigned int target, unsigned int texture);
 typedef void (*PFNGLTEXIMAGE2DPROC)(unsigned int target, int level, int internalformat, int width, int height, int border, int format, unsigned int type, void *pixels);
 typedef void (*PFNGLTEXPARAMETERIPROC)(unsigned int target, unsigned int pname, int param);
 typedef void (*PFNGLTEXPARAMETERFVPROC)(unsigned int target, unsigned int pname, float *params);
-typedef struct __GLsync *GLsync;
 typedef unsigned int (*PFNGLCREATESHADERPROC)(unsigned int shaderType);
 typedef unsigned int (*PFNGLCREATEPROGRAMPROC)(void);
 typedef void (*PFNGLATTACHSHADERPROC)(unsigned int program, unsigned int shader);
